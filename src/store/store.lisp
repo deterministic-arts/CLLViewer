@@ -294,8 +294,11 @@
                             (otherwise 'standard-message)))))
           (let ((object (make-instance class
                                        :store store :key offset :identifier identifier
-                                       :author author :date date :subject subject :child-count n-children
-                                       :parent-key parent :descendant-count n-descendants
+                                       :author (and author (decode-=???=-words author)) 
+                                       :date date 
+                                       :subject (and subject (decode-=???=-words subject)) 
+                                       :child-count n-children :parent-key parent 
+                                       :descendant-count n-descendants
                                        :tree-range-start tree-start :tree-range-end tree-end)))
             (setf (gethash offset table) object)
             object)))))
