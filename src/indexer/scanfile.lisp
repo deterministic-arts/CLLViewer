@@ -208,11 +208,19 @@ Some facts about the input file...
 
 (defparameter *schema*
   '(
+"CREATE TABLE person (
+  id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  PRIMARY KEY (id)
+);"
+
 "CREATE TABLE author (
   id INTEGER NOT NULL,
   address TEXT NOT NULL,
+  person_id INTEGER DEFAULT NULL,
   PRIMARY KEY (id),
-  UNIQUE (address)
+  UNIQUE (address),
+  FOREIGN KEY (person_id) REFERENCES person (id)
 );"
 
 "CREATE TABLE message (
