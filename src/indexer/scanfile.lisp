@@ -1,6 +1,7 @@
 
 (in-package "CLL-INDEXER")
 
+
 #|
 Some facts about the input file... 
 
@@ -62,15 +63,17 @@ Some facts about the input file...
                 (eql (aref buffer 8) #x0A)))))
 
 
-(defun map-over-file-message-blobs (function pathname)
+(defun map-over-file-message-blobs (function pathname &key pass-file-size)
   (let ((line (make-array 128 :element-type 'octet :adjustable t :fill-pointer 0))
         (message (make-array 1024 :element-type 'octet :adjustable t :fill-pointer 0))
+        (size nil)
         (start 0)
         (offset 0))
     (labels
         ((flush ()
            (when (plusp (length message))
-             (funcall function start (babel:octets-to-string message :encoding :utf-8))
+             (apply function start (babel:octets-to-string message :encoding :utf-8)
+                    (and size (list size))) 
              (setf (fill-pointer message) 0)))
          (grow ()
            (loop
@@ -79,6 +82,7 @@ Some facts about the input file...
       (with-open-file (stream pathname
                               :direction :input
                               :element-type 'octet)
+        (when pass-file-size (setf size (file-length stream))) 
         (loop
           (let* ((eof (read-ascii-line line stream))
                  (read (length line))
@@ -151,32 +155,10 @@ Some facts about the input file...
     (read-stream-message-blob offset stream)))
 
 
-(defmacro do-file-message-blobs ((offset blob) filename &body body)
-  `(map-over-file-message-blobs (lambda (,offset ,blob) ,@body) ,filename))
-
-
-
-(defun generate-message-index (source-file 
-                               &optional (index-file (make-pathname :defaults source-file :type "cdb"))
-                               &aux (temp-file (make-pathname :defaults source-file :type "cdb-temp")))
-  (zcdb:with-output-to-cdb (cdb index-file temp-file) 
-    (do-file-message-blobs (offset blob) source-file
-      (multiple-value-bind (headers) (split-message blob)
-        (let ((msgid-1 (make-msgid (format nil "msg.~D.cll.txt@deterministic-arts.de" offset)))
-              (msgid-2 (let ((header (cdr (assoc "MESSAGE-ID" headers :test #'string-equal))))
-                         (and header (parse-msgid header)))))
-          (let ((key-1 (babel:string-to-octets (msgid-string msgid-1) :encoding :utf-8))
-                (key-2 (and msgid-2 (babel:string-to-octets (msgid-string msgid-2) :encoding :utf-8)))
-                (value (let ((array (make-array 4 :element-type 'octet)))
-                         (loop
-                           :for i :upfrom 0 :below 4
-                           :for k :downfrom 24 :to 0 :by 8
-                           :do (setf (aref array i) (ldb (byte 8 k) offset)))
-                         array)))
-            (zcdb:add-record key-1 value cdb)
-            (when key-2
-              (zcdb:add-record key-2 value cdb))))))))
-
+(defmacro do-file-message-blobs ((offset blob &optional size) filename &body body)
+  `(map-over-file-message-blobs (lambda (,offset ,blob ,@(when size (list size))) ,@body)
+                                  ,filename 
+                                  ,@(when size (list :pass-file-size t))))
 
 (defun load-message-blob (key
                           &key (source-file #P"./cll.txt") 
@@ -249,13 +231,19 @@ Some facts about the input file...
 ))
 
 (defun create-tables (connection)
+  (signal-progress :phase :begin :action :initialize-schema)
   (with-transaction (transaction connection :read-only nil)
-    (dolist (command *schema*)
-      (with-prepared-statement (statement transaction command)
-        (loop while (step-statement statement))))))
+    (let ((total (length *schema*))
+          (count 0))
+      (dolist (command *schema*)
+        (with-prepared-statement (statement transaction command)
+          (loop while (step-statement statement)))
+        (signal-progress :phase :work :action :initialize-schema :completion (/ (incf count) total)))))
+  (signal-progress :phase :end :action :initialize-schema :completion 1))
 
 
 (defun update-child-counts (connection)
+  (signal-progress :action :update-child-counts :phase :begin)
   (with-transaction (transaction connection :read-only nil)
     (let ((buffer (make-array 1024 :element-type 't :fill-pointer 0 :initial-element nil :adjustable t)))
       (with-prepared-statement (stmt transaction "SELECT parent_id, COUNT(*) AS nch FROM message GROUP BY parent_id HAVING nch > 0")
@@ -266,11 +254,16 @@ Some facts about the input file...
                 (vector-push-extend (cons id cn) buffer))))
       (with-prepared-statement (stmt transaction "UPDATE message SET n_children = ? WHERE id = ?")
         (loop
+          :with item := 0
           :for (id . count) :across buffer
           :do (reset-statement stmt)
               (bind-parameter stmt 1 count)
               (bind-parameter stmt 2 id)
-              (loop :while (step-statement stmt)))))))
+              (loop :while (step-statement stmt))
+              (signal-progress :action :update-child-counts
+                               :phase :update
+                               :completion (/ (incf item) (length buffer)))))))
+  (signal-progress :action :update-child-counts :phase :end :completion 1))
 
 
 (defun update-nested-sets (connection)
@@ -323,11 +316,12 @@ Some facts about the input file...
           (loop while (step-statement stmt)))))))
 
 
-(defun generate-index-database-1 (connection source-file progress-stream)
+(defun generate-index-database-1 (connection source-file)
   (let ((max-batch-size 1000)
         (author-table (make-hash-table :test 'equal))
         (msgid-table (make-hash-table :test 'equal))
         (msgid-mapping (make-hash-table :test #'msgid= :hash-function #'msgid-hash))
+        (completion 0)
         (author-counter 0)
         (batch-entries nil)
         (batch-size 0)
@@ -360,8 +354,8 @@ Some facts about the input file...
                         (when (and (<= 1 month 12) (<= 1 day 31))
                           (encode-universal-time 0 0 12 day month year 0))))
                      (_ nil)))))
-               
-           (enqueue-message (offset blob)
+           
+           (enqueue-message (offset blob total-size)
              (let* ((headers (split-message blob))
                     (raw-msgid (cdr (assoc "Message-ID" headers :test #'string-equal)))
                     (raw-references (cdr (assoc "References" headers :test #'string-equal)))
@@ -374,6 +368,7 @@ Some facts about the input file...
                     (subject (and raw-subject (string-trim #.(concatenate 'string '(#\newline #\return #\tab #\space)) raw-subject)))
                     (date (or (parse-date raw-date) 0))
                     (known (gethash msgid msgid-mapping)))
+               (setf completion (/ offset total-size))
                (unless known
                  (setf (gethash msgid msgid-mapping) offset)
                  (push (list* offset msgid subject date author refs) batch-entries)
@@ -390,7 +385,7 @@ Some facts about the input file...
                          (loop while (step-statement stmt))
                          (setf (gethash string author-table) id)
                          id))))))
-           (flush-batch ()
+           (flush-batch (&optional last)
              (when (plusp batch-size)
                (with-transaction (tnx connection :read-only nil)
                  (dolist (entry batch-entries)
@@ -408,72 +403,62 @@ Some facts about the input file...
                          (loop while (step-statement stmt)))
                        (unless parent
                          (push (cons offset refs) unresolved-references))))))
-               (when progress-stream
-                 (write-char #\. progress-stream)
-                 (force-output progress-stream)
-                 (when (zerop (mod (incf batch-count) 20))
-                   (terpri progress-stream)))
+               (signal-progress :action :index :phase (if last :end :update) :completion (if last 1 completion))
                (setf batch-size 0)
                (setf batch-entries nil))))
-        (when progress-stream 
-          (format progress-stream "~&[Indexing]~%")
-          (force-output progress-stream))
-        (do-file-message-blobs (offset blob) source-file
-          (enqueue-message offset blob))
-        (flush-batch)
-        (when progress-stream
-          (format progress-stream "~&[Finalizing threads]~%")
-          (force-output progress-stream))
+        (do-file-message-blobs (offset blob size) source-file
+          (enqueue-message offset blob size))
+        (flush-batch t)
         (setf batch-count 0)
-        (labels
-            ((flush-batch ()
-               (when (plusp batch-size)
-                 (with-transaction (tnx connection :read-only nil)
-                   (with-prepared-statement (adopt tnx "UPDATE message SET parent_id = ? WHERE id = ?")
-                     (dolist (entry batch-entries)
-                       (let ((msg (car entry))
-                             (pid (cdr entry)))
-                         (assert (and msg pid))
-                         (reset-statement adopt)
-                         (bind-parameter adopt 2 msg)
-                         (bind-parameter adopt 1 pid)
-                         (loop while (step-statement adopt))))))
-                 (when progress-stream
-                   (write-char #\. progress-stream)
-                   (force-output progress-stream)
-                   (when (zerop (mod (incf batch-count) 20))
-                     (terpri progress-stream)))
-                 (setf batch-size 0)
-                 (setf batch-entries nil))))
-          (loop
-            :for (fixup . refs) :in unresolved-references
-            :for parent := (or (some (lambda (key) (gethash key msgid-mapping)) refs) +orphan-id+)
-            :do (push (cons fixup parent) batch-entries)
-                (incf batch-size)
-                (when (>= batch-size max-batch-size)
-                  (flush-batch)))
-          (flush-batch))))))
+        (let ((total-fixups (length unresolved-references))
+              (completed-fixups 0))
+          (labels
+              ((flush-batch (&optional last)
+                 (when (plusp batch-size)
+                   (with-transaction (tnx connection :read-only nil)
+                     (with-prepared-statement (adopt tnx "UPDATE message SET parent_id = ? WHERE id = ?")
+                       (dolist (entry batch-entries)
+                         (let ((msg (car entry))
+                               (pid (cdr entry)))
+                           (assert (and msg pid))
+                           (reset-statement adopt)
+                           (bind-parameter adopt 2 msg)
+                           (bind-parameter adopt 1 pid)
+                           (loop while (step-statement adopt))))))
+                   (incf completed-fixups batch-size)
+                   (setf batch-size 0)
+                   (setf batch-entries nil)
+                   (signal-progress :action :fixup-references 
+                                    :phase (if last :end :update)
+                                    :completion (if last 1 (/ completed-fixups total-fixups))))))
+            (loop
+              :for (fixup . refs) :in unresolved-references
+              :for parent := (or (some (lambda (key) (gethash key msgid-mapping)) refs) +orphan-id+)
+              :do (push (cons fixup parent) batch-entries)
+                  (incf batch-size)
+                  (when (>= batch-size max-batch-size)
+                    (flush-batch)))
+            (flush-batch t)))))))
 
 
 (defun generate-index-database (&key (source-file #P"./cll.txt") 
                                      (database-file (make-pathname :defaults source-file :type "db"))
-                                     (progress-stream *standard-output*))
-  (ignore-errors (delete-file database-file))
-  (with-connection (connection database-file)
-    (create-tables connection)
-    (generate-index-database-1 connection source-file progress-stream)
-    (when progress-stream
-      (format progress-stream "~&[Update child counters]~%")
-      (force-output progress-stream))
-    (update-child-counts connection)
-    (when progress-stream
-      (format progress-stream "~&[Update nested sets]~%")
-      (force-output progress-stream))
-    (update-nested-sets connection)
-    (when progress-stream
-      (format progress-stream "~&[Done]~%")
-      (force-output progress-stream))
-    database-file))
+                                     ((:signal-progress *signal-progress*) *signal-progress*))
+  (let ((*progressing-operation* `(generate-index-database ,source-file ,database-file))) 
+    (ignore-errors (delete-file database-file))
+    (with-connection (connection database-file)
+      (create-tables connection)
+      (generate-index-database-1 connection source-file)
+      (update-child-counts connection)
+      (update-nested-sets connection)
+      database-file)))
+
+
+(defun generate-index-database* (&key (source-file #P"./cll.txt") 
+                                      (database-file (make-pathname :defaults source-file :type "db")))
+  (handler-bind ((progress (lambda (object) (format t "~&~A~%" object))))
+    (generate-index-database :source-file source-file :database-file database-file
+                             :signal-progress t)))
 
 
 
