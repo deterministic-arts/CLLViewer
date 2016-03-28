@@ -66,6 +66,7 @@
           completion)))))
 
 
+#-(and)
 (defmethod handle-event ((object progress-view) (event progress-event))
   (format *terminal-io* "~&Handle-Event(~S, ~S)~%" object event)
   (funcall (progress-event-action event)))

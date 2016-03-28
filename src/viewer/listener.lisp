@@ -382,13 +382,14 @@
 (defun display-primary (frame pane)
   (let* ((selection (listener-selection frame))
          (text (and (messagep selection) (message-text selection))))
+    (window-clear pane)
     (when text
       (with-output-as-presentation (pane selection 'message :single-box t)
         (with-text-style (pane +article-text-style+)
           (let ((lines (mapcar (lambda (line) (expand-tabs line 8))
                                (split-sequence #\newline text :remove-empty-subseqs nil))))
             (dolist (line lines)
-              (with-drawing-options (pane :ink (if (scan "^\\s*[>|].*" line) +gray40+ +black+))
+              (with-drawing-options (pane :ink (if (scan "^\\s*([>|]|<\\s).*" line) +gray40+ +black+))
               (let ((start 0))
                 (loop
                   (multiple-value-bind (mstart mend) (scan "\\b(https?://[^/]+(?:/[a-zA-Z0-9!$%&/()=?*+~#_.:;-]*)?)" line :start start)

@@ -340,6 +340,7 @@
           
 (defun map-over-messages (function store query parameters)
   (let ((store (node-store store)))
+    (format *terminal-io* "~&EXEC ~S~%PARAMS ~S~%" query parameters)
     (with-transaction (tnx store :read-only t)
       (with-prepared-statement (stmt tnx query)
         (loop
@@ -385,29 +386,37 @@
              result))))))
 
 
+(defconstant +unix-epoch+ (encode-universal-time 0 0 0 1 1 1970 0))
+
+
 (defmethod map-over-child-nodes (function (object indexed-node) 
-                                 &key offset limit from-end start-date end-date)
+                                 &key offset limit from-end start-date end-date
+                                 &aux (use-start (and start-date (> start-date +unix-epoch+))))
   (when (plusp (node-child-count object))
     (let ((query (msg-query :where (format nil "m.parent_id = ?~
                                                 ~:[~; AND m.date >= ?~]~
                                                 ~:[~; AND m.date < ?~]"
-                                           start-date end-date)
+                                           (and use-start start-date)
+                                           end-date)
                             :order-by (if (not from-end) '("m.date ASC" "m.id DESC") '("m.date DESC" "m.id ASC"))
                             :limit limit :offset (and limit offset))))
       (map-over-messages function (node-store object) query 
                          (nconc (list (node-key object))
-                                (when start-date (list start-date))
+                                (when use-start (list start-date))
                                 (when end-date (list end-date)))))))
 
-(defmethod count-descendant-nodes ((object indexed-node) &key start-date end-date)
+(defmethod count-descendant-nodes ((object indexed-node) 
+                                   &key start-date end-date
+                                   &aux (use-start (and start-date (> start-date +unix-epoch+))))
+                                                         
   (count-nodes (node-store object)
                (format nil "m.tree_start >= ? AND m.tree_start < ?~
                             ~:[~;~%AND m.date >= ?~]~
                             ~:[~;~%AND m.date < ?~]"
-                       start-date end-date)
+                       (and use-start start-date) end-date)
                (list* (node-tree-range-start object)
                       (node-tree-range-end object)
-                      (nconc (when start-date (list start-date))
+                      (nconc (when use-start (list start-date))
                              (when end-date (list end-date))))))
   
 
@@ -465,18 +474,15 @@
     (and child (node-key child))))
 
 
-(defconstant +unix-epoch+ (encode-universal-time 0 0 0 1 1 1970 0))
-
 (defun collect-node-date-ranges (object)
   (let* ((store (node-store object))
          (query (format nil "SELECT strftime('%Y%m', (CASE WHEN m.date < ~D THEN 0 ELSE m.date - ~D END), 'unixepoch') AS month~
                            ~%, COUNT(*) AS n_msgs~
                            ~%FROM message m~
-                           ~%WHERE m.tree_start >= ~D AND m.tree_end < ~D~
+                           ~%WHERE m.parent_id = ~D~
                            ~%GROUP BY month ORDER BY month ASC"
                         +unix-epoch+ +unix-epoch+
-                        (node-tree-range-start object)
-                        (node-tree-range-end object))))
+                        (node-key object))))
     (with-transaction (tnx store :read-only t)
       (with-prepared-statement (stmt tnx query)
         (loop

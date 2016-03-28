@@ -27,6 +27,7 @@
 (progn
   (load "src/viewer/package")
   (load "src/viewer/definitions")
+  (load "src/viewer/progress")
   (load "src/viewer/ptypes")
   (load "src/viewer/message")
   (load "src/viewer/listener"))
