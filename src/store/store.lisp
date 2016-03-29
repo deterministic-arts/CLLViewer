@@ -173,6 +173,7 @@
 (defclass root-node (strut-node) ())
 (defclass orphans-node (strut-node) ())
 (defclass threads-node (strut-node) ())
+(defclass spam-node (strut-node) ())
 
 (defmethod node-parent ((object child-node))
   (let ((cached (cached-parent object)))
@@ -188,40 +189,51 @@
 (defmethod message-offset ((object managed-node))
   (node-key object))
 
+(defun flush-message-caches (store)
+  (clrhash (store-index store))
+  store)
+
+(defun decode-quoted-printable-text (text)
+  (let* ((end (length text))
+         (buffer (make-array end :element-type 'character :adjustable t :fill-pointer 0))
+         (start 0)
+         (stop 0))
+    (labels
+        ((copy (start end)
+           (when (< start end)
+             (loop
+               :for k :upfrom start :below end
+               :do (vector-push-extend (char text k) buffer)))))
+      (loop
+        (cond 
+          ((>= stop end) (copy start end) (return))
+          ((not (eql (char text stop) #\=)) (incf stop))
+          (t (copy start stop)
+             (incf stop)
+             (let ((avail (- end stop)))
+               (if (not (plusp avail)) (return)
+                   (cond
+                     ((eql #\newline (char text stop)) (incf stop) (setf start stop))
+                     ((< avail 2) (return))
+                     (t (let ((digit1 (digit-char-p (char text stop) 16))
+                              (digit2 (digit-char-p (char text (1+ stop)) 16)))
+                          (when (and digit1 digit2)
+                            (vector-push-extend (code-char (logior (ash digit1 4) digit2)) buffer))
+                          (incf stop 2)
+                          (setf start stop)))))))))
+      buffer)))
+
+(defun decode-base64-text (text &key (encoding :iso-8859-1))
+  (let ((bytes (cl-base64:base64-string-to-usb8-array text)))
+    (babel:octets-to-string bytes :encoding encoding)))
+
 
 (defun decode-message-text (headers text)
-  (let* ((cte (cdr (assoc "Content-Transfer-Encoding" headers :test #'string-equal)))
-         (qpp (string-equal cte "quoted-printable")))
-    (if (not qpp) text
-        (let* ((end (length text))
-               (buffer (make-array end :element-type 'character :adjustable t :fill-pointer 0))
-               (start 0)
-               (stop 0))
-          (labels
-              ((copy (start end)
-                 (when (< start end)
-                   (loop
-                     :for k :upfrom start :below end
-                     :do (vector-push-extend (char text k) buffer)))))
-            (loop
-              (cond 
-                ((>= stop end) (copy start end) (return))
-                ((not (eql (char text stop) #\=)) (incf stop))
-                (t (copy start stop)
-                   (incf stop)
-                   (let ((avail (- end stop)))
-                     (if (not (plusp avail)) (return)
-                         (cond
-                           ((eql #\newline (char text stop)) (incf stop) (setf start stop))
-                           ((< avail 2) (return))
-                           (t (let ((digit1 (digit-char-p (char text stop) 16))
-                                    (digit2 (digit-char-p (char text (1+ stop)) 16)))
-                                (when (and digit1 digit2)
-                                  (vector-push-extend (code-char (logior (ash digit1 4) digit2)) buffer))
-                                (incf stop 2)
-                                (setf start stop)))))))))
-            buffer)))))
-                            
+  (let ((cte (cdr (assoc "Content-Transfer-Encoding" headers :test #'string-equal))))
+    (cond
+      ((equalp cte "QUOTED-PRINTABLE") (decode-quoted-printable-text text))
+      ((equalp cte "BASE64") (decode-base64-text text))
+      (t text))))
 
 
 (defmethod message-text ((object message))
@@ -288,9 +300,10 @@
                           (ecase offset
                             ((#xFFFFFFFF) 'root-node)
                             ((#xFFFFFFFE) 'orphans-node)
-                            ((#xFFFFFFFD) 'threads-node))
+                            ((#xFFFFFFFD) 'threads-node)
+                            ((#xFFFFFFFC) 'spam-node))
                           (case parent
-                            ((#xFFFFFFFE #xFFFFFFFD) 'thread-root-message)
+                            ((#xFFFFFFFE #xFFFFFFFD #xFFFFFFFC) 'thread-root-message)
                             (otherwise 'standard-message)))))
           (let ((object (make-instance class
                                        :store store :key offset :identifier identifier
@@ -340,7 +353,6 @@
           
 (defun map-over-messages (function store query parameters)
   (let ((store (node-store store)))
-    (format *terminal-io* "~&EXEC ~S~%PARAMS ~S~%" query parameters)
     (with-transaction (tnx store :read-only t)
       (with-prepared-statement (stmt tnx query)
         (loop
@@ -371,6 +383,7 @@
                ((member key '(t :root)) (values "m.id = ?" (list #xFFFFFFFF)))
                ((eql key :orphans) (values "m.id = ?" (list #xFFFFFFFE)))
                ((eql key :threads) (values "m.id = ?" (list #xFFFFFFFD)))
+               ((eql key :spam) (values "m.id = ?" (list #xFFFFFFFC)))
                ((integerp key) (values "m.id = ?" (list key)))
                ((msgidp key) (values "m.msgid = ?" (list (msgid-string key))))
                ((stringp key) (values "m.msgid = ?" (list key)))
@@ -494,7 +507,25 @@
                            (month (parse-integer key :start 4)))
                        (list year month count)))))))
           
-               
+
+
+(defun reparent-node (child parent)
+  (let ((store (node-store child)))
+    (unless (eql store (node-store parent))
+      (error "cannot reparent nodes across stores"))
+    (with-transaction (tnx store :read-only nil)
+      (let ((child-path (node-path child))
+            (parent-path (node-path parent)))
+        (cond
+          ((member child parent-path) (error "child is contained in new parent's path"))
+          ((member parent child-path) nil)
+          (t (with-prepared-statement (stmt tnx "UPDATE message SET parent_id = ? WHERE id = ?")
+               (bind-parameter stmt 1 (node-key parent))
+               (bind-parameter stmt 2 (node-key child))
+               (loop while (step-statement stmt))
+               (flush-message-caches store)
+               child)))))))
+
 
 
 

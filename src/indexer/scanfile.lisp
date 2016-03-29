@@ -187,6 +187,7 @@ Some facts about the input file...
 (defconstant +root-id+ #xFFFFFFFF)
 (defconstant +orphan-id+ #xFFFFFFFE)
 (defconstant +threads-id+ #xFFFFFFFD)
+(defconstant +spam-id+ #xFFFFFFFC)
 
 (defparameter *schema*
   '(
@@ -226,6 +227,7 @@ Some facts about the input file...
 "INSERT INTO message (id, msgid, parent_id, date, author_id, virtual, subject) VALUES (4294967295, 'root.cll.txt@deterministic-arts.net', NULL, 0, NULL, 1, 'All messages');"
 "INSERT INTO message (id, msgid, parent_id, date, author_id, virtual, subject) VALUES (4294967294, 'orphans.cll.txt@deterministic-arts.net', 4294967295, 0, NULL, 1, 'Orphans');"
 "INSERT INTO message (id, msgid, parent_id, date, author_id, virtual, subject) VALUES (4294967293, 'threads.cll.txt@deterministic-arts.net', 4294967295, 0, NULL, 1, 'Threads');"
+"INSERT INTO message (id, msgid, parent_id, date, author_id, virtual, subject) VALUES (4294967292, 'spam.cll.txt@deterministic-arts.net', 4294967295, 0, NULL, 1, 'Spam');"
 "CREATE INDEX message_by_parent_and_date ON message (parent_id, date);"
 "CREATE INDEX message_by_tree_start ON message (tree_start, tree_end);"
 ))
@@ -260,15 +262,17 @@ Some facts about the input file...
               (bind-parameter stmt 1 count)
               (bind-parameter stmt 2 id)
               (loop :while (step-statement stmt))
-              (signal-progress :action :update-child-counts
-                               :phase :update
-                               :completion (/ (incf item) (length buffer)))))))
+              (when (zerop (mod (incf item) 100))
+                (signal-progress :action :update-child-counts
+                                 :phase :update
+                                 :completion (/ item (length buffer))))))))
   (signal-progress :action :update-child-counts :phase :end :completion 1))
 
 
 (defun update-nested-sets (connection)
   (let ((nodes (make-hash-table :test 'eql))
-        (counter 0))
+        (counter 0)
+        (written 0))
     (labels
         ((node-id (object) (first object))
          (node-range (object) (second object))
@@ -283,6 +287,7 @@ Some facts about the input file...
                (let ((node (make-node id)))
                  (setf (gethash id nodes) node)
                  node))))
+      (signal-progress :action :update-nested-sets :phase :begin :message "Loading messages" :completion 0)
       (with-transaction (transaction connection :read-only nil)
         (with-prepared-statement (stmt transaction "SELECT id, parent_id FROM message ORDER BY date DESC, id ASC")
           (loop
@@ -298,7 +303,11 @@ Some facts about the input file...
                  (bind-parameter stmt 1 start)
                  (bind-parameter stmt 2 end)
                  (bind-parameter stmt 3 id)
-                 (loop while (step-statement stmt)))
+                 (loop while (step-statement stmt))
+                 (incf written)
+                 (when (zerop (mod written 100))
+                   (signal-progress :action :update-nested-sets :phase :update
+                                    :completion (/ written counter))))
                (traverse (node)
                  (let ((start (incf counter)))
                    (mapc #'traverse (node-children node))
@@ -312,9 +321,11 @@ Some facts about the input file...
                                (node-start value)
                                (node-end value)))
                      nodes)))
+        (signal-progress :action :update-nested-sets :phase :update 
+                         :message "Updating descendant counters"
+                         :completion 0)
         (with-prepared-statement (stmt transaction "UPDATE message SET n_descendants = tree_end - tree_start - 1")
           (loop while (step-statement stmt)))))))
-
 
 (defun generate-index-database-1 (connection source-file)
   (let ((max-batch-size 1000)
@@ -452,6 +463,13 @@ Some facts about the input file...
       (update-child-counts connection)
       (update-nested-sets connection)
       database-file)))
+
+
+(defun update-message-counters (connection &key ((:signal-progress *signal-progress*) *signal-progress*))
+  (let ((*progressing-operation* `(update-message-counters ,connection)))
+    (update-child-counts connection)
+    (update-nested-sets connection)
+    connection))
 
 
 (defun generate-index-database* (&key (source-file #P"./cll.txt") 

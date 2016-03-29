@@ -31,6 +31,7 @@
   (:method ((object null)) nil)
   (:method ((object threads-node)) object)
   (:method ((object orphans-node)) object)
+  (:method ((object spam-node)) object)
   (:method ((object node))
     (multiple-value-bind (answer found) (object-property object 'node-section)
       (if found answer
@@ -81,6 +82,16 @@
 (defmethod node-listener ((object date-range))
   (node-listener (date-range-node object)))
 
+(defmethod print-object ((object date-range) stream)
+  (print-unreadable-object (object stream :type t :identity t)
+    (multiple-value-bind (sec min hour day month year) (decode-universal-time (date-range-start object) 0)
+      (declare (ignore sec min hour day))
+      (format stream "~4,'0D-~A OF ~S"
+              year 
+              (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)
+              (date-range-node object)))))
+
+
 (defun collect-date-ranges (node)
   (loop
     :for (year month count) :in (collect-node-date-ranges node)
@@ -105,23 +116,21 @@
     result))
 
 
+(defun section-root-date-range-list (object) 
+  (multiple-value-bind (list found) (object-property object 'date-range-list)
+    (if found
+        list
+        (let ((list (collect-date-ranges object)))
+          (setf (object-property object 'date-range-list) list)
+          list))))
+
+
 (defgeneric section-date-range-list (object)
   (:method ((object node)) (section-date-range-list (node-section object)))
   (:method ((object null)) nil)
-  (:method ((object threads-node))
-    (multiple-value-bind (list found) (object-property object 'date-range-list)
-      (if found
-          list
-          (let ((list (collect-date-ranges object)))
-            (setf (object-property object 'date-range-list) list)
-            list))))
-  (:method ((object orphans-node))
-    (multiple-value-bind (list found) (object-property object 'date-range-list)
-      (if found
-          list
-          (let ((list (collect-date-ranges object)))
-            (setf (object-property object 'date-range-list) list)
-            list)))))
+  (:method ((object threads-node)) (section-root-date-range-list object))
+  (:method ((object orphans-node)) (section-root-date-range-list object))
+  (:method ((object spam-node)) (section-root-date-range-list object)))
 
 
 (defgeneric node-section-date-range (object)

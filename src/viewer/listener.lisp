@@ -98,19 +98,21 @@
           (horizontally (:x-spacing 3 :background +white+)
             (vertically (:y-spacing 3 :background +white+)
               (outlining (:thickness 1 :foreground +black+) 
-                (spacing (:thickness 3 :background +white+) dates))
+                (spacing (:thickness 3 :background +white+) 
+                  (restraining () dates)))
               (outlining (:thickness 1 :foreground +black+) 
-                all-threads)
+                (restraining () all-threads))
               threads-adjuster
               (outlining (:thickness 1 :foreground +black+)
-                current-thread))
+                (restraining () current-thread)))
             tree-adjuster
             (vertically (:x-spacing 3 :y-spacing 3 :background +white+)
               (outlining (:thickness 1 :foreground +black+) 
                 (spacing (:thickness 3 :background +white+) 
-                  header))
+                  (restraining () header)))
               toolbox
-              (outlining (:thickness 1 :foreground +black+) primary)))
+              (outlining (:thickness 1 :foreground +black+) 
+                (restraining () primary))))
           primary-adjuster
           (outlining (:thickness 1 :foreground +black+) interactor*)
           documentation)))))
@@ -224,6 +226,54 @@
 
 
 
+(define-command (com-update-message-counters
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Update Message Counters") ()
+  (let* ((frame *application-frame*)
+         (store (listener-store frame))
+         (selection (car (%listener-stack frame)))
+         (key (and selection (node-key selection))))
+    (with-progress ()
+      (cll-indexer:update-message-counters store)
+      (flush-message-caches store))
+    (let ((node (find-node key store nil nil)))
+      (setf (listener-selection frame) node))))
+
+(define-command (com-reparent-node 
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Reparent Node") ((child 'node) (parent 'node))
+  (reparent-node child parent))
+
+(define-command (com-mark-as-spam 
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Mark As Spam") ((object 'node :gesture (:delete 
+                                                                 :tester ((object)
+                                                                           (and (typep object 'thread-root-message)
+                                                                                (not (find-if (lambda (elt) (typep elt 'spam-node))
+                                                                                              (node-path object)))))
+                                                                 :documentation "Mark As Spam")))
+  (let* ((store (listener-store *application-frame*))
+         (spam (find-node :spam store)))
+    (reparent-node object spam)))
+
+(define-command (com-move-to-threads
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Move To Threads") ((object 'node :gesture (:menu 
+                                                                    :tester ((object)
+                                                                             (and (typep object 'thread-root-message)
+                                                                                  (not (find-if (lambda (elt) (typep elt 'threads-node))
+                                                                                                (node-path object)))))
+                                                                    :documentation "Move To Threads")))
+  (let* ((store (listener-store *application-frame*))
+         (spam (find-node :threads store)))
+    (reparent-node object spam)))
+
+
+
 (define-presentation-type date-range ())
 
 (define-presentation-type current-date-range ()
@@ -233,6 +283,77 @@
 
 (define-presentation-type current-store ()
   :inherit-from 'store)
+
+(define-presentation-type current-section ()
+  :inherit-from 'node)
+
+
+(defun draw-range-year (year ranges sensitizer stream)
+  (format stream "~&~D~%" year)
+  (formatting-table (stream :x-spacing "WW")
+    (loop
+      :for row :upfrom 0 :below 4
+      :do (formatting-row (stream)
+            (loop
+              :for col :upfrom 0 :below 3
+              :for month := (+ 1 (* row 3) col)
+              :do (formatting-cell (stream)
+                    (let* ((head (car ranges))
+                           (count (and head (date-range-count head)))
+                           (match (and head (multiple-value-bind (sec min hour day rmonth ryear) (decode-universal-time (date-range-start head) 0)
+                                              (declare (ignore sec min hour day))
+                                              (and (eql year ryear) (eql month rmonth)))))
+                           (name (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)))
+                      (if (not match)
+                          (format stream "~A" name)
+                          (progn
+                            (funcall sensitizer head stream (lambda () (format stream "~A (~D)" name count)))
+                            (setf ranges (cdr ranges))))))))))
+  ranges)
+
+(defun draw-date-ranges (ranges stream &key sensitizer)
+  (loop
+    :while ranges
+    :do (multiple-value-bind (sec min hour day month year) (decode-universal-time (date-range-start (car ranges)) 0)
+          (declare (ignore sec min hour day month))
+          (setf ranges (draw-range-year year ranges 
+                                        (or sensitizer (lambda (object stream continuation)
+                                                         (with-output-as-presentation (stream object 'date-range :single-box t)
+                                                           (funcall continuation))))
+                                        stream)))))
+
+
+(define-command (com-show-date-ranges 
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Show Date Ranges") ()
+  (draw-date-ranges (section-date-range-list (listener-selection *application-frame*))
+                    *standard-output*))
+
+(define-command (com-select-section 
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Select Section") ((key '(member :orphans :threads :spam)))
+  (let* ((store (listener-store *application-frame*))
+         (root (find-node key store nil nil)))
+    (when root
+      (let* ((range (car (section-date-range-list root)))
+             (thread (and range (car (date-range-threads range)))))
+        (setf (listener-selection *application-frame*) thread)))))
+
+
+(define-command (com-pick-section 
+                  :command-table global-commands
+                  :enabled-if listener-selection
+                  :name "Pick Section") ()
+  (let* ((choices '(:threads :orphans :spam))
+         (choice (menu-choose choices 
+                              :label "Section"
+                              :printer (lambda (object stream) 
+                                         (write-string (string-capitalize (symbol-name object)) stream)))))
+    (when choice
+      (com-select-section choice))))
+
 
 (define-command (com-pick-date-range
                   :command-table global-commands
@@ -269,6 +390,14 @@
     (object)
   (progn object nil))
 
+(define-presentation-to-command-translator pick-section-translator 
+    (current-section com-pick-section global-commands
+      :gesture :select
+      :priority 1000
+      :documentation "Pick Section")
+    (object)
+  (progn object nil))
+
 (define-presentation-to-command-translator close-current-store-translator 
     (current-store com-close-store listener
       :gesture :menu 
@@ -299,10 +428,13 @@
       (formatting-row (pane)
         (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Section" pane)))
         (formatting-cell (pane)
-          (typecase section
-            (orphans-node (write-string "Orphans" pane))
-            (threads-node (write-string "Threads" pane))
-            (t nil))))
+          (when section 
+            (with-output-as-presentation (pane section 'current-section :single-box t)
+              (typecase section
+                (orphans-node (write-string "Orphans" pane))
+                (threads-node (write-string "Threads" pane))
+                (spam-node (write-string "Spam" pane))
+                (t nil))))))
       (formatting-row (pane)
         (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Month" pane)))
         (formatting-cell (pane)
@@ -358,7 +490,11 @@
         (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Subject" pane)))
         (formatting-cell (pane)
           (when selection
-            (format pane "~A" (or (node-title selection) ""))))))))
+            (format pane "~A" 
+                    (let* ((text (or (node-title selection) ""))
+                           (length (length text)))
+                      (if (<= length 70) text
+                          (subseq text 0 70))))))))))
 
 
 (defun display-thread-list (frame pane)
