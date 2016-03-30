@@ -302,6 +302,23 @@
                    :description description
                    :priority priority))
 
+(define-command (com-annotate-bookmark
+                  :enabled-if listener-store
+                  :command-table global-commands
+                  :name "Annotate Bookmark") ((object 'bookmark :prompt "bookmark")
+                                              (description 'string :prompt "description"))
+  (let* ((description (string-trim #.(concatenate 'string '(#\space #\tab #\newline #\return)) description))
+         (true-description (if (zerop (length description)) nil description)))
+    (update-bookmark* (bookmark-node object) (list :description true-description))))
+
+(define-command (com-interactively-annotate-bookmark 
+                  :enabled-if listener-store
+                  :command-table global-commands
+                  :name "Interactively Annotate Bookmark") ((object 'bookmark :gesture (:edit :documentation "Annotate")))
+  (let* ((description (string-trim #.(concatenate 'string '(#\space #\tab #\newline #\return)) (accept 'string :prompt "description")))
+         (true-description (if (zerop (length description)) nil description)))
+    (update-bookmark* (bookmark-node object) (list :description true-description))))
+
 
 
 (defun invoke-preserving-nodes (function &optional (frame *application-frame*))
@@ -523,6 +540,13 @@
     (object)
   (progn object nil))
 
+(define-presentation-to-command-translator goto-bookmarked-node-translator
+    (bookmark com-select-node global-commands
+      :gesture :select
+      :documentation "Go To")
+    (object)
+  (list (bookmark-node object)))
+
 
 
 (defparameter +article-text-style+
@@ -664,15 +688,32 @@
 
 
 (defun display-memory (frame pane)
-  (let ((memory (listener-memory frame)))
+  (let* ((memory (listener-memory frame))
+         (store (listener-store frame))
+         (bookmarks (and store (list-bookmarks store))))
     (when memory
+      (with-text-face (pane :bold)
+        (format pane "Remembered Nodes~%"))
       (formatting-item-list (pane :x-spacing "WW")
         (dolist (item memory)
           (formatting-cell (pane)
             (with-output-as-presentation (pane item 'node :single-box t)
               (format pane "~A by ~A"
                       (or (node-title item) "(Unknown)")
-                      (or (and (messagep item) (message-author item)) "(Unknown)")))))))))
+                      (or (and (messagep item) (message-author item)) "(Unknown)")))))))
+    (when bookmarks
+      (with-text-face (pane :bold)
+        (format pane "~&Bookmarks~%"))
+      (formatting-item-list (pane :x-spacing "WW")
+        (dolist (item bookmarks)
+          (formatting-cell (pane)
+            (with-output-as-presentation (pane item 'bookmark :single-box t)
+              (format pane "~A by ~A~@[: ~A~]"
+                      (or (node-title (bookmark-node item)) "(Unknown)")
+                      (or (and (messagep (bookmark-node item)) (message-author (bookmark-node item))) "(Unknown)")
+                      (bookmark-description item)))))))))
+
+
 
 
 (defun display-current-thread (frame pane)

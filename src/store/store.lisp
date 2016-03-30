@@ -550,6 +550,9 @@
 (defmethod node-store ((object bookmark))
   (node-store (bookmark-node object)))
 
+(defmethod bookmark-node ((object node))
+  object)
+
 
 (defun map-over-bookmarks (function store 
                            &key from-end limit offset)
@@ -611,7 +614,7 @@
           :do (bind-parameter stmt index value))
         (loop
           :while (step-statement stmt)
-          :do (let* ((node (extract-message stmt store))
+          :do (let* ((node (extract-message store stmt))
                      (priority (statement-column-value stmt (+ +msg-projection-len+ 0)))
                      (description (statement-column-value stmt (+ +msg-projection-len+ 1)))
                      (bookmark (make-instance 'bookmark
@@ -628,36 +631,37 @@
 
 
 (defun update-bookmark* (node properties)
-  (destructuring-bind (&key (priority 0 have-priority) (description nil have-description)) properties
-    (let ((store (node-store node)))
-      (with-transaction (tnx store :read-only nil)
-        (let* ((node (find-node node store))
-               (present (find-bookmark-1 (node-key node) store tnx)))
-          (if present
-              (let* ((old-priority (bookmark-priority present))
-                     (old-description (bookmark-description present))
-                     (same-priority (or (not have-priority) (eql priority old-priority)))
-                     (same-description (or (not have-description) (equal description old-description))))
-                (unless (and same-priority same-description)
-                  (with-prepared-statement (stmt tnx "UPDATE bookmark SET priority = ?, description = ? WHERE message_id = ?")
-                    (bind-parameter stmt 1 priority)
-                    (bind-parameter stmt 2 description)
-                    (bind-parameter stmt 3 (node-key (bookmark-node present)))
-                    (loop while (step-statement stmt))))
-                (setf (slot-value present 'priority) priority)
-                (setf (slot-value present 'description) description)
-                present)
-              (let* ((priority (etypecase priority ((signed-byte 64) priority)))
-                     (description (and description (string description)))
-                     (object (make-instance 'bookmark
-                                           :node node :priority priority
-                                           :description description)))
-                (with-prepared-statement (stmt tnx "INSERT INTO bookmark (message_id, priority, description) VALUES (?, ?, ?)")
-                  (bind-parameter stmt 1 (node-key node))
-                  (bind-parameter stmt 2 priority)
-                  (bind-parameter stmt 3 description)
-                  (loop while (step-statement stmt)))
-                object)))))))
+  (let ((node (bookmark-node node)))
+    (destructuring-bind (&key (priority 0 have-priority) (description nil have-description)) properties
+      (let ((store (node-store node)))
+        (with-transaction (tnx store :read-only nil)
+          (let* ((node (find-node node store))
+                 (present (find-bookmark-1 (node-key node) store tnx)))
+            (if present
+                (let* ((old-priority (bookmark-priority present))
+                       (old-description (bookmark-description present))
+                       (same-priority (or (not have-priority) (eql priority old-priority)))
+                       (same-description (or (not have-description) (equal description old-description))))
+                  (unless (and same-priority same-description)
+                    (with-prepared-statement (stmt tnx "UPDATE bookmark SET priority = ?, description = ? WHERE message_id = ?")
+                      (bind-parameter stmt 1 priority)
+                      (bind-parameter stmt 2 description)
+                      (bind-parameter stmt 3 (node-key (bookmark-node present)))
+                      (loop while (step-statement stmt))))
+                  (setf (slot-value present 'priority) priority)
+                  (setf (slot-value present 'description) description)
+                  present)
+                (let* ((priority (etypecase priority ((signed-byte 64) priority)))
+                       (description (and description (string description)))
+                       (object (make-instance 'bookmark
+                                              :node node :priority priority
+                                              :description description)))
+                  (with-prepared-statement (stmt tnx "INSERT INTO bookmark (message_id, priority, description) VALUES (?, ?, ?)")
+                    (bind-parameter stmt 1 (node-key node))
+                    (bind-parameter stmt 2 priority)
+                    (bind-parameter stmt 3 description)
+                    (loop while (step-statement stmt)))
+                  object))))))))
                 
 
 (defun update-bookmark (node &rest properties &key (priority 0) description)
