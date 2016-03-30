@@ -315,6 +315,9 @@
                                        :tree-range-start tree-start :tree-range-end tree-end)))
             (setf (gethash offset table) object)
             object)))))
+
+(defparameter +msg-projection+ "m.id, m.msgid, m.parent_id, m.date, a.address, m.n_children, m.subject, m.n_descendants, m.tree_start, m.tree_end")
+(defparameter +msg-projection-len+ 10)
     
 (defun msg-query (&key (where nil) (group-by nil) (order-by nil) (having nil)
                        (limit nil) (offset nil))
@@ -324,13 +327,14 @@
     (error 'type-error :datum offset :expected-type '(or null (unsigned-byte 32))))
   (unless (typep limit '(or null (unsigned-byte 32)))
     (error 'type-error :datum limit :expected-type '(or null (unsigned-byte 32))))  
-  (format nil "SELECT m.id, m.msgid, m.parent_id, m.date, a.address, m.n_children, m.subject, m.n_descendants, m.tree_start, m.tree_end~@
+  (format nil "SELECT ~A~@
                FROM message m LEFT JOIN author a ON a.id = m.author_id~
                ~@[~%WHERE ~A~]~
                ~@[~%GROUP BY ~{~A~^, ~}~]~
                ~@[~%HAVING ~A~]~
                ~@[~%ORDER BY ~{~A~^, ~}~]~
                ~@[~%LIMIT ~D~]~@[ OFFSET ~D~]"
+          +msg-projection+
           where group-by having order-by limit offset))
 
 
@@ -526,9 +530,145 @@
                (flush-message-caches store)
                child)))))))
 
+
+
+(defgeneric bookmark-node (object))
+(defgeneric bookmark-priority (object))
+(defgeneric bookmark-description (object))
+
+(defclass bookmark () 
+  ((node
+     :type node :initarg :node
+     :reader bookmark-node)
+   (priority
+     :type integer :initarg :priority
+     :reader bookmark-priority)
+   (description
+     :type string :initarg :description
+     :reader bookmark-description)))
+
+(defmethod node-store ((object bookmark))
+  (node-store (bookmark-node object)))
 
 
+(defun map-over-bookmarks (function store 
+                           &key from-end limit offset)
+  (let ((store (node-store store))
+        (query (format nil "SELECT ~A, b.priority, b.description~
+                          ~%FROM (message m~
+                          ~%INNER JOIN bookmark b ON b.message_id = m.id)~
+                          ~%LEFT JOIN author a ON m.author_id = a.id~
+                          ~%ORDER BY ~A~
+                          ~@[~%LIMIT ~D~]~
+                          ~@[~%OFFSET ~D~]"
+                       +msg-projection+
+                       (if from-end
+                           "b.priority ASC, b.message_id DESC"
+                           "b.priority DESC, b.message_id ASC")
+                       limit (and limit offset))))
+    (with-transaction (tnx store)
+      (with-prepared-statement (stmt tnx query)
+        (loop
+          :while (step-statement stmt)
+          :do (let ((msg (extract-message store stmt))
+                    (priority (statement-column-value stmt (+ +msg-projection-len+ 0)))
+                    (description (statement-column-value stmt (+ +msg-projection-len+ 1))))
+                (funcall function (make-instance 'bookmark
+                                                 :node msg :priority priority
+                                                 :description description))))))))
 
-#-(and)
-(with-open-store (store #P"./cll.txt")
-  (pprint (collect-node-date-ranges (store-root store))))
+
+(defun list-bookmarks (store)
+  (let (result)
+    (map-over-bookmarks (lambda (object) (push object result)) store :from-end t)
+    result))
+
+(defun find-bookmark-1 (designator store transaction)
+  (multiple-value-bind (criterion parameters)
+      (typecase designator
+        (bookmark (values "m.id = ?" (list (node-key (bookmark-node designator)))))
+        (indexed-node (values "m.id = ?" (list (node-key designator))))
+        (integer (values "m.id = ?" (list designator)))
+        (msgid (values "m.msgid = ?" (list (msgid-string designator))))
+        (string (values "m.msgid = ?" (list designator)))
+        ((eql :orphans) (values "m.id = ?" (list #xFFFFFFFE)))
+        ((eql :threads) (values "m.id = ?" (list #xFFFFFFFD)))
+        ((eql :threads) (values "m.id = ?" (list #xFFFFFFFC)))
+        ((eql :root) (values "m.id = ?" (list #xFFFFFFFF)))
+        (t (error 'simple-type-error
+                  :datum designator :expected-type '(or integer msgid node)
+                  :format-control "~S is not a well-formed node designator"
+                  :format-arguments (list designator))))
+    (let ((result nil)
+          (query (format nil "SELECT ~A, b.priority, b.description~
+                            ~%FROM message m INNER JOIN author a ON m.author_id = a.id~
+                            ~%INNER JOIN bookmark b ON b.message_id = m.id~
+                            ~%WHERE ~A" +msg-projection+ criterion)))
+      (with-prepared-statement (stmt transaction query)
+        (loop
+          :for index :upfrom 1 
+          :for value :in parameters 
+          :do (bind-parameter stmt index value))
+        (loop
+          :while (step-statement stmt)
+          :do (let* ((node (extract-message stmt store))
+                     (priority (statement-column-value stmt (+ +msg-projection-len+ 0)))
+                     (description (statement-column-value stmt (+ +msg-projection-len+ 1)))
+                     (bookmark (make-instance 'bookmark
+                                              :node node :priority priority
+                                              :description description)))
+                (setf result bookmark)))
+        result))))
+
+
+(defun find-bookmark (designator store)
+  (let ((store (node-store store)))
+    (with-transaction (tnx store)
+      (find-bookmark-1 designator store tnx))))
+
+
+(defun update-bookmark* (node properties)
+  (destructuring-bind (&key (priority 0 have-priority) (description nil have-description)) properties
+    (let ((store (node-store node)))
+      (with-transaction (tnx store :read-only nil)
+        (let* ((node (find-node node store))
+               (present (find-bookmark-1 (node-key node) store tnx)))
+          (if present
+              (let* ((old-priority (bookmark-priority present))
+                     (old-description (bookmark-description present))
+                     (same-priority (or (not have-priority) (eql priority old-priority)))
+                     (same-description (or (not have-description) (equal description old-description))))
+                (unless (and same-priority same-description)
+                  (with-prepared-statement (stmt tnx "UPDATE bookmark SET priority = ?, description = ? WHERE message_id = ?")
+                    (bind-parameter stmt 1 priority)
+                    (bind-parameter stmt 2 description)
+                    (bind-parameter stmt 3 (node-key (bookmark-node present)))
+                    (loop while (step-statement stmt))))
+                (setf (slot-value present 'priority) priority)
+                (setf (slot-value present 'description) description)
+                present)
+              (let* ((priority (etypecase priority ((signed-byte 64) priority)))
+                     (description (and description (string description)))
+                     (object (make-instance 'bookmark
+                                           :node node :priority priority
+                                           :description description)))
+                (with-prepared-statement (stmt tnx "INSERT INTO bookmark (message_id, priority, description) VALUES (?, ?, ?)")
+                  (bind-parameter stmt 1 (node-key node))
+                  (bind-parameter stmt 2 priority)
+                  (bind-parameter stmt 3 description)
+                  (loop while (step-statement stmt)))
+                object)))))))
+                
+
+(defun update-bookmark (node &rest properties &key (priority 0) description)
+  (declare (ignore priority description))
+  (update-bookmark* node properties))
+
+  
+(defun delete-bookmark (object)
+  (let* ((node (bookmark-node object))
+         (store (node-store node)))
+    (with-transaction (tnx store :read-only nil)
+      (with-prepared-statement (stmt tnx "DELETE FROM bookmark WHERE message_id = ?")
+        (bind-parameter stmt 1 (node-key node))
+        (loop while (step-statement stmt))))))

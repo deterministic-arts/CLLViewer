@@ -6,6 +6,8 @@
 (defgeneric listener-selection (object))
 (defgeneric (setf listener-selection) (value object))
 (defgeneric listener-stack (object))
+(defgeneric listener-memory (object))
+(defgeneric (setf listener-memory) (value object))
 
 (define-application-frame listener (conditional-command-support standard-application-frame)
   ((store
@@ -13,7 +15,10 @@
      :accessor %listener-store :reader node-store :reader listener-store)
    (stack
      :type list :initform nil
-     :accessor %listener-stack :reader listener-stack))
+     :accessor %listener-stack :reader listener-stack)
+   (memory 
+     :type list :initform  nil
+     :accessor listener-memory))
   (:command-table (listener :inherit-from (global-commands)))
   (:menu-bar nil)
   (:panes
@@ -24,6 +29,16 @@
       :background +white+
       :display-function 'display-header
       :scroll-bars nil
+      :display-time :command-loop
+      ;;:default-view +tree-view+
+      :end-of-line-action :allow
+      :end-of-page-action :allow)
+    (memory :application
+      :name 'memory
+      :border-width 0
+      :background +white+
+      :display-function 'display-memory
+      :scroll-bars t
       :display-time :command-loop
       ;;:default-view +tree-view+
       :end-of-line-action :allow
@@ -60,6 +75,7 @@
       ;;:default-view +tree-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
+    (memory-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
     (threads-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
     (current-thread :application 
       :name 'current-thread
@@ -111,8 +127,12 @@
                 (spacing (:thickness 3 :background +white+) 
                   (restraining () header)))
               toolbox
-              (outlining (:thickness 1 :foreground +black+) 
-                (restraining () primary))))
+              (horizontally (:x-spacing 3 :background +white+)
+                (outlining (:thickness 1 :foreground +black+) 
+                  (restraining () primary))
+                memory-adjuster
+                (outlining (:thickness 1 :foreground +black+)
+                  (restraining () memory)))))
           primary-adjuster
           (outlining (:thickness 1 :foreground +black+) interactor*)
           documentation)))))
@@ -128,6 +148,7 @@
   (setf (%listener-store object) value))
 
 (defmethod (setf listener-store) :after (value (object listener))
+  (setf (listener-memory object) nil)
   (if (not value)
       (setf (%listener-stack object) nil)
       (let* ((section (find-node :threads value))
@@ -191,6 +212,23 @@
 
 
 
+(define-command (com-remember-node
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Remember Node") ((node 'node :gesture (:menu
+                                                                :tester ((object) (not (member object (listener-memory *application-frame*))))
+                                                                :documentation "Remember")))
+  (push node (listener-memory *application-frame*)))
+
+(define-command (com-forget-node 
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Forget Node") ((node 'node :gesture (:menu
+                                                              :tester ((object) (member object (listener-memory *application-frame*)))
+                                                              :documentation "Forget")))
+  (setf (listener-memory *application-frame*) 
+        (remove node (listener-memory *application-frame*))))
+
 (define-command (com-select-date-range 
                   :name "Select Date Range"
                   :enabled-if listener-store
@@ -224,27 +262,103 @@
                 (formatting-cell (t) (write-string key))
                 (formatting-cell (t) (write-string value))))))))
 
+(define-command (com-list-bookmarks 
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "List Bookmarks") ()
+  (let ((all (list-bookmarks (listener-store *application-frame*))))
+    (if (not all)
+        (format t "~&There are not bookmarks.")
+        (formatting-table (t :x-spacing "WW")
+          (formatting-row (t)
+            (with-text-face (t :bold)
+              (formatting-cell (t) (write-string "Message"))
+              (formatting-cell (t) nil)
+              (formatting-cell (t) (write-string "Description"))))
+          (dolist (object all)
+            (with-output-as-presentation (t object 'bookmark :single-box t)
+            (formatting-row (t)
+              (with-output-as-presentation (t (bookmark-node object) 'node :single-box t)
+                (formatting-cell (t) (format t "#~D" (node-key (bookmark-node object))))
+                (formatting-cell (t) (format t "~@[~A~]" (node-title (bookmark-node object)))))
+              (formatting-cell (t)
+                (format t "~@[~A~]" (bookmark-description object))))))))))
+
+
+(define-command (com-delete-bookmark 
+                  :command-table global-commands
+                  :name "Delete Bookmark"
+                  :enabled-if listener-store) ((object 'bookmark :gesture (:delete :documentation "Delete")))
+  (delete-bookmark object))
+
+
+(define-command (com-add-bookmark 
+                  :enabled-if listener-store
+                  :command-table global-commands
+                  :name "Add Bookmark") ((object 'node :gesture (:menu :documentation "Add Bookmark"))
+                                         &key (priority 'integer :prompt "priority" :default 0) 
+                                              (description 'string :prompt "description"))
+  (update-bookmark object
+                   :description description
+                   :priority priority))
+
 
+
+(defun invoke-preserving-nodes (function &optional (frame *application-frame*))
+  (let ((selection (listener-selection frame))
+        (store (listener-store frame))
+        (memory (listener-memory frame))
+        (result (multiple-value-list (funcall function))))
+    (when (eq store (listener-store frame))
+      (let ((new-memory (mapcan (lambda (object)
+                                  (let ((new-object (find-node (node-key object) store nil nil)))
+                                    (when new-object
+                                      (list new-object))))
+                                memory))
+            (new-selection (and selection (let ((node (find-node (node-key selection) store nil nil)))
+                                            (or node
+                                                (let* ((section (find-node :threads store))
+                                                       (ranges (section-date-range-list section)))
+                                                  (and ranges
+                                                       (car (date-range-threads (car ranges))))))))))
+        (setf (listener-memory frame) new-memory)
+        (setf (listener-selection frame) new-selection)))
+    (values-list result)))
+
+(defmacro preserving-nodes ((&rest options) &body body)
+  `(invoke-preserving-nodes (lambda () ,@body) ,@options))
+
 
 (define-command (com-update-message-counters
                   :command-table global-commands
                   :enabled-if listener-store
                   :name "Update Message Counters") ()
-  (let* ((frame *application-frame*)
-         (store (listener-store frame))
-         (selection (car (%listener-stack frame)))
-         (key (and selection (node-key selection))))
-    (with-progress ()
-      (cll-indexer:update-message-counters store)
-      (flush-message-caches store))
-    (let ((node (find-node key store nil nil)))
-      (setf (listener-selection frame) node))))
+  (let ((frame *application-frame*))
+    (preserving-nodes (frame)
+      (let ((store (listener-store frame)))
+        (with-progress ()
+          (cll-indexer:update-message-counters store)
+          (flush-message-caches store))))))
+
 
 (define-command (com-reparent-node 
                   :command-table global-commands
                   :enabled-if listener-store
                   :name "Reparent Node") ((child 'node) (parent 'node))
-  (reparent-node child parent))
+  (preserving-nodes ()
+    (let ((store (node-store child)))
+      (reparent-node child parent)
+      (with-progress ()
+        (cll-indexer:update-message-counters store :children-only t)
+        (flush-message-caches store)))))
+
+
+(define-command (com-interactively-reparent-node
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Interactively Reparent Node") ((child 'node :gesture (:menu :documentation "Reparent")))
+  (com-reparent-node child (accept 'node)))
+
 
 (define-command (com-mark-as-spam 
                   :command-table global-commands
@@ -255,9 +369,10 @@
                                                                                 (not (find-if (lambda (elt) (typep elt 'spam-node))
                                                                                               (node-path object)))))
                                                                  :documentation "Mark As Spam")))
-  (let* ((store (listener-store *application-frame*))
-         (spam (find-node :spam store)))
-    (reparent-node object spam)))
+  (preserving-nodes ()
+    (let* ((store (listener-store *application-frame*))
+           (spam (find-node :spam store)))
+      (reparent-node object spam))))
 
 (define-command (com-move-to-threads
                   :command-table global-commands
@@ -268,9 +383,10 @@
                                                                                   (not (find-if (lambda (elt) (typep elt 'threads-node))
                                                                                                 (node-path object)))))
                                                                     :documentation "Move To Threads")))
-  (let* ((store (listener-store *application-frame*))
-         (spam (find-node :threads store)))
-    (reparent-node object spam)))
+  (preserving-nodes ()
+    (let* ((store (listener-store *application-frame*))
+           (spam (find-node :threads store)))
+      (reparent-node object spam))))
 
 
 
@@ -356,10 +472,11 @@
 
 
 (define-command (com-pick-date-range
-                  :command-table global-commands
-                  :enabled-if listener-store
-                  :name "Pick Date Range") ()
+                 :command-table global-commands
+                 :enabled-if listener-store
+                 :name "Pick Date Range") ()
   (let* ((choices (section-date-range-list (listener-selection *application-frame*)))
+         (current (node-section-date-range (listener-selection *application-frame*))) 
          (small (make-text-style nil :roman :small))
          (range (menu-choose choices 
                              :label "Date Range"
@@ -368,14 +485,15 @@
                              :printer (lambda (object stream)
                                         (multiple-value-bind (sec min hour day month year) (decode-universal-time (date-range-start object) 0)
                                           (declare (ignore sec min hour day))
-                                          (with-text-face (stream (if (eql month 1) :bold :roman))
-                                            (format stream "~A ~D"
-                                                    (aref '#("" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December") 
-                                                          month)
-                                                    year))
-                                          (terpri stream)
-                                          (with-text-style (stream small)
-                                            (format stream "~D message~:*~P" (date-range-count object))))))))
+                                          (with-drawing-options (stream :ink (if (eq object current) +blue+ +black+))
+                                            (with-text-face (stream (if (eql month 1) :bold :roman))
+                                              (format stream "~A ~D"
+                                                      (aref '#("" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December") 
+                                                            month)
+                                                      year))
+                                            (terpri stream)
+                                            (with-text-style (stream small)
+                                              (format stream "~D message~:*~P" (date-range-count object)))))))))
     (when range
       (let ((selection (car (date-range-threads range))))
         (setf (listener-selection *application-frame*) selection)))))
@@ -525,7 +643,7 @@
           (let ((lines (mapcar (lambda (line) (expand-tabs line 8))
                                (split-sequence #\newline text :remove-empty-subseqs nil))))
             (dolist (line lines)
-              (with-drawing-options (pane :ink (if (scan "^\\s*([>|]|<\\s).*" line) +gray40+ +black+))
+              (with-drawing-options (pane :ink (if (scan "^\\s*([>|:]|<\\s).*" line) +gray40+ +black+))
               (let ((start 0))
                 (loop
                   (multiple-value-bind (mstart mend) (scan "\\b(https?://[^/]+(?:/[a-zA-Z0-9!$%&/()=?*+~#_.:;-]*)?)" line :start start)
@@ -545,6 +663,16 @@
               (terpri pane))))))))
 
 
+(defun display-memory (frame pane)
+  (let ((memory (listener-memory frame)))
+    (when memory
+      (formatting-item-list (pane :x-spacing "WW")
+        (dolist (item memory)
+          (formatting-cell (pane)
+            (with-output-as-presentation (pane item 'node :single-box t)
+              (format pane "~A by ~A"
+                      (or (node-title item) "(Unknown)")
+                      (or (and (messagep item) (message-author item)) "(Unknown)")))))))))
 
 
 (defun display-current-thread (frame pane)
@@ -566,6 +694,3 @@
                (map-over-child-nodes (lambda (child) (show child (1+ level)))
                                      object))))
         (show root 0)))))
-
-             
-      

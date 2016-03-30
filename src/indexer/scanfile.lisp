@@ -224,6 +224,14 @@ Some facts about the input file...
   FOREIGN KEY (parent_id) REFERENCES message (id)
 );"
 
+"CREATE TABLE bookmark (
+  message_id INTEGER NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 0,
+  description TEXT,
+  PRIMARY KEY (message_id),
+  FOREIGN KEY (message_id) REFERENCES message (id)
+);"
+
 "INSERT INTO message (id, msgid, parent_id, date, author_id, virtual, subject) VALUES (4294967295, 'root.cll.txt@deterministic-arts.net', NULL, 0, NULL, 1, 'All messages');"
 "INSERT INTO message (id, msgid, parent_id, date, author_id, virtual, subject) VALUES (4294967294, 'orphans.cll.txt@deterministic-arts.net', 4294967295, 0, NULL, 1, 'Orphans');"
 "INSERT INTO message (id, msgid, parent_id, date, author_id, virtual, subject) VALUES (4294967293, 'threads.cll.txt@deterministic-arts.net', 4294967295, 0, NULL, 1, 'Threads');"
@@ -465,10 +473,12 @@ Some facts about the input file...
       database-file)))
 
 
-(defun update-message-counters (connection &key ((:signal-progress *signal-progress*) *signal-progress*))
+(defun update-message-counters (connection 
+                                &key ((:signal-progress *signal-progress*) *signal-progress*)
+                                     (children-only nil))
   (let ((*progressing-operation* `(update-message-counters ,connection)))
     (update-child-counts connection)
-    (update-nested-sets connection)
+    (unless children-only (update-nested-sets connection))
     connection))
 
 
