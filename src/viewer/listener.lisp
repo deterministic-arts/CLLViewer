@@ -25,7 +25,7 @@
     (header :application
       :height '(3 :line) :min-height '(3 :line) :max-height '(3 :line)
       :name 'header
-      :border-width 0
+      :borders nil
       :background +white+
       :display-function 'display-header
       :scroll-bars nil
@@ -35,7 +35,7 @@
       :end-of-page-action :allow)
     (memory :application
       :name 'memory
-      :border-width 0
+      :borders nil
       :background +white+
       :display-function 'display-memory
       :scroll-bars t
@@ -46,7 +46,7 @@
     (toolbox :application
       :height '(2 :line) :min-height '(2 :line) :max-height '(2 :line)
       :name 'toolbox
-      :border-width 0
+      :borders nil
       :background +white+
       :display-function 'display-toolbox
       :scroll-bars nil
@@ -57,7 +57,7 @@
     (dates :application 
       :height '(3 :line) :min-height '(3 :line) :max-height '(3 :line)
       :name 'dates
-      :border-width 0
+      :borders nil
       :background +white+
       :display-function 'display-dates
       :scroll-bars nil
@@ -67,7 +67,7 @@
       :end-of-page-action :allow)
     (all-threads  :application 
       :name 'all-threads
-      :border-width 0
+      :borders nil
       :background +white+
       :display-function 'display-thread-list
       :scroll-bars t
@@ -79,7 +79,7 @@
     (threads-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
     (current-thread :application 
       :name 'current-thread
-      :border-width 0
+      :borders nil
       :background +white+
       :display-function 'display-current-thread
       :scroll-bars t
@@ -90,11 +90,11 @@
     (tree-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
     (primary :application
       :name 'primary
-      :border-width 0
+      :borders nil
       :background +white+
       :display-time :command-loop
       :display-function 'display-primary
-      :scroll-bars t
+      :scroll-bars nil
       ;;:default-view +primary-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
@@ -104,7 +104,7 @@
         :type 'interactor-pane
         :name 'interactor
         ;;:default-view +listener-view+
-        :border-width 0
+        :borders nil
         :scroll-bars t))
     (documentation :pointer-documentation))
   (:layouts 
@@ -126,10 +126,14 @@
               (outlining (:thickness 1 :foreground +black+) 
                 (spacing (:thickness 3 :background +white+) 
                   (restraining () header)))
-              toolbox
+              (outlining (:thickness 1 :foreground +black+) 
+                (spacing (:thickness 3 :background +white+) 
+                  toolbox))
               (horizontally (:x-spacing 3 :background +white+)
                 (outlining (:thickness 1 :foreground +black+) 
-                  (restraining () primary))
+                  (restraining ()
+                    (scrolling (:scroll-bar t)
+                      primary)))
                 memory-adjuster
                 (outlining (:thickness 1 :foreground +black+)
                   (restraining () memory)))))
