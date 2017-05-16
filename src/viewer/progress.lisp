@@ -162,3 +162,48 @@
 (defmacro with-progress ((&rest options) &body body)
   `(invoke-with-progress (lambda () ,@body)
                          ,@options))
+
+(defun prettify-action (value)
+  (typecase value
+    (null nil)
+    (string value)
+    (symbol (string-capitalize (substitute #\space #\- (symbol-name value))))
+    (t (format nil "~A" value))))
+
+(defun invoke-with-simple-progress (function
+                                    &key (stream *standard-output*) (progress-view +progress-bar-view+)
+                                      (erase-view nil))
+  (let ((message "") (value 0))
+    (multiple-value-bind (cx cy) (stream-cursor-position stream)
+      (let ((record (updating-output (stream)
+                      (let ((percent (floor (* value 100))))
+                        (fresh-line stream)
+                        (updating-output (stream :unique-id 'progress
+                                                 :cache-value (cons percent message)
+                                                 :cache-test #'equal)
+                          (write-char #\space stream)
+                          (present (/ percent 100) 'progress-value :stream stream :view progress-view)
+                          (format stream " ~A (~,1F%)" message percent))))))
+        (handler-bind ((progress (lambda (object)
+                                   (let (;(operation (progress-operation object))
+                                         ;(phase (progress-phase object))
+                                         (action (prettify-action (progress-action object)))
+                                         (text (progress-message object)))
+                                     (setf message (format nil "~A~@[: ~A~]" action text))
+                                     (setf value (max 0 (min 1 (progress-completion object))))
+                                     (redisplay record stream)))))
+          (let ((result (multiple-value-list (funcall function))))
+            (if (not erase-view)
+                (progn
+                  (setf message "Complete")
+                  (setf value 1)
+                  (redisplay record stream))
+                (progn
+                  (erase-output-record record stream)
+                  (setf (stream-cursor-position stream) (values cx cy))))
+            (values-list result)))))))
+
+(defmacro with-simple-progress ((&optional (stream 't) &rest options) &body body)
+  (setf stream (if (eq stream 't) '*standard-output* stream))
+  `(invoke-with-simple-progress (lambda () ,@body) :stream ,stream ,@options))
+                       

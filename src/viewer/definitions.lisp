@@ -182,3 +182,112 @@
     :do (let ((expansion (expand-tabs line tab-width)))
           (write-string expansion stream)
           (terpri stream))))
+
+
+
+(defun draw-progress-bar (stream x y width height ratio
+                          &key (border-ink +foreground-ink+) (bar-ink +foreground-ink+)
+                               (background-ink +background-ink+))
+  (draw-rectangle* stream x y (+ x (1- width)) (+ y (1- height)) :filled nil :ink border-ink)
+  (draw-rectangle* stream (1+ x) (1+ y) (+ x (1- width)) (+ y (1- height)) :filled t :ink background-ink)
+  (when (plusp ratio)
+    (let* ((inner-width (- width 2))
+           (inner-height (- height 2))
+           (length (floor (* inner-width (max 0 (min 1 ratio))))))
+      (draw-rectangle* stream (+ x 2) (+ y 2) (+ x length) (+ y inner-height)
+                       :filled t :ink bar-ink)))
+  stream)
+
+(defclass progress-bar-view (view)
+  ((width
+     :initarg :width :initform 200
+     :reader progress-bar-view-width)
+   (border-ink
+     :initarg :border-ink :initform +foreground-ink+
+     :reader progress-bar-view-border-ink)
+   (background-ink
+     :initarg :background-ink :initform +background-ink+
+     :reader progress-bar-view-background-ink)
+   (bar-ink
+     :initarg :bar-ink :initform +foreground-ink+
+     :reader progress-bar-view-bar-ink)))
+
+(defparameter +progress-bar-view+ (make-instance 'progress-bar-view))
+(defparameter +light-progress-bar-view+ (make-instance 'progress-bar-view :border-ink +gray40+ :bar-ink +gray60+))
+
+(define-presentation-type progress-value ()
+  :inherit-from '(real 0 1))
+
+(define-presentation-method present (object (type progress-value) stream (view progress-bar-view) &key acceptably)
+  (if acceptably
+      (call-next-method)
+      (with-sheet-medium (medium stream)
+        (let* ((width (progress-bar-view-width view))
+               (style (medium-text-style medium))
+               (ascent (text-style-ascent style medium)))
+          (multiple-value-bind (cx cy) (stream-cursor-position stream)
+            (draw-progress-bar stream cx cy width ascent object
+                               :border-ink (progress-bar-view-border-ink view)
+                               :background-ink (progress-bar-view-background-ink view)
+                               :bar-ink (progress-bar-view-bar-ink view))
+            (setf (stream-cursor-position stream) (values (+ cx width) cy)))))))
+
+(defun invoke-with-inline-progress (function items
+                                    &key (stream *standard-output*) sum-label
+                                         (partial-view +progress-bar-view+)
+                                         (total-view +progress-bar-view+))
+  (labels
+      ((stringify (symbol)
+         (if (stringp symbol) symbol
+             (string-capitalize (substitute #\space #\- (symbol-name symbol)))))
+       (parse-item (item)
+         (destructuring-bind (name &key (label (stringify name))) (if (consp item) item (list item))
+           (values name label))))
+    (let* (names progress labels (count 0) (total 0) (total-key (gensym)))
+      (loop
+         for elt in (reverse items)
+         do (multiple-value-bind (name label) (parse-item elt)
+              (push name names)
+              (push 0 progress)
+              (push label labels)
+              (incf count)))
+      (setf sum-label (and sum-label (stringify sum-label)))
+      (let ((record (updating-output (stream)
+                      (mapcar (lambda (name progress label)
+                                (fresh-line stream)
+                                (stream-increment-cursor-position stream 2 0)
+                                (updating-output (stream :unique-id name :cache-value progress)
+                                  (present progress 'progress-value :stream stream :view partial-view)
+                                  (format stream " ~A (~,1F%)" label (* 100 progress))))
+                              names progress labels)
+                      (when sum-label
+                        (with-text-face (stream :bold)
+                        (fresh-line stream)
+                        (stream-increment-cursor-position stream 2 0)
+                        (updating-output (stream :unique-id total-key :cache-value total)
+                          (present total 'progress-value :stream stream :view total-view)
+                          (format stream " ~A (~,1F%)" sum-label (* 100 total))))))))
+        (funcall function (lambda (&rest pairs)
+                            (let (changed)
+                              (loop
+                                 for (key value) on pairs by #'cddr
+                                 do (loop
+                                       for n in names
+                                       for p on progress
+                                       when (eql n key)
+                                       do (setf (car p) value)
+                                          (setf changed t)
+                                          (return)))
+                              (when changed
+                                (when sum-label
+                                  (setf total (/ (reduce #'+ progress :initial-value 0) count)))
+                                (redisplay record stream)))))))))
+
+(defmacro with-inline-progress ((report &optional (stream 't) &rest options) items &body body)
+  (setf stream (if (eq stream 't) '*standard-output* stream))
+  (let ((reporter (gensym)))
+    `(invoke-with-inline-progress (lambda (,reporter)
+                                    (flet ((,report (key value) (funcall ,reporter key value)))
+                                      ,@body))
+                                  ,items
+                                  :stream ,stream ,@options)))

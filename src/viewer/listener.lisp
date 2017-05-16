@@ -357,7 +357,7 @@
   (let ((frame *application-frame*))
     (preserving-nodes (frame)
       (let ((store (listener-store frame)))
-        (with-progress ()
+        (with-simple-progress (t :erase-view t)
           (cll-indexer:update-message-counters store)
           (flush-message-caches store))))))
 
@@ -369,7 +369,7 @@
   (preserving-nodes ()
     (let ((store (node-store child)))
       (reparent-node child parent)
-      (with-progress ()
+      (with-simple-progress ()
         (cll-indexer:update-message-counters store :children-only t)
         (flush-message-caches store)))))
 
@@ -739,3 +739,62 @@
                (map-over-child-nodes (lambda (child) (show child (1+ level)))
                                      object))))
         (show root 0)))))
+
+
+
+
+(defclass work-item ()
+  ((key
+     :type t :initarg :key
+     :reader work-item-key)
+   (name
+     :type string :initarg :name
+     :reader work-item-name)
+   (progress
+     :type (real 0 1) :initarg :progress :initform 0
+     :accessor work-item-progress)))
+
+(defclass background-work ()
+  ((items
+     :type list :initform nil :initarg :items
+     :reader background-work-items)))
+
+
+
+
+
+  
+                                 
+       
+(define-listener-command (com-dummy :name "Dummy") ()
+  (with-inline-progress (progress t :sum-label "Total" :partial-view +light-progress-bar-view+) (list :set-up :work :tear-down)
+    (loop
+       for k upfrom 0 to 100 by 10
+       do (progress :set-up (/ k 100))
+          (sleep 0.2))
+    (loop
+       for k upfrom 0 to 100 by 5
+       do (progress :work (/ k 100))
+         (sleep 0.1))
+    (loop
+       for k upfrom 0 to 100 by 25
+       do (progress :tear-down (/ k 100))
+          (sleep 0.1))))
+                    
+
+
+
+  #-(and)
+  (let* ((stream *standard-output*)
+         (progress 0)
+         (record (updating-output (stream)
+                   (updating-output (stream :cache-value progress :unique-id 'progress)
+                     (present (/ progress 100) 'progress-value :view +progress-bar-view+ :stream stream)
+                     (write-char #\space stream)
+                     (present (/ progress 100) 'progress-value :stream stream)))))
+    (force-output stream)
+    (loop
+       for k upfrom 0 to 10
+       do (sleep 1)
+          (setf progress (* k 10))
+          (redisplay record stream)))
