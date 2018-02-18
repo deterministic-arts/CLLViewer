@@ -844,3 +844,73 @@
         (formatting-cell ()
           (write-string "C Brim Brim")))
         )))
+
+
+
+
+(defun invoke-rendering-card (function
+                              &key
+                                (stream *standard-output*) (symbol :question)
+                                (symbol-size :huge) (tools nil) (ink +foreground-ink+)
+                                (margin-ink +gray65+) (symbol-ink +black+)
+                                (outline-ink ink) (sensitive-tool-ink ink)
+                                (insensitive-tool-ink +gray50+))
+  (let ((padding 6))
+    (surrounding-output-with-border (stream :shape :card :symbol symbol
+                                            :symbol-size symbol-size :symbol-padding padding
+                                            :padding 0 :outline-ink outline-ink
+                                            :ink ink :symbol-ink symbol-ink
+                                            :margin-ink margin-ink)
+      (formatting-table (stream :x-spacing 0 :y-spacing 0)
+        (formatting-row (stream)
+          (formatting-cell (stream :align-x :left :align-y :top)
+            (surrounding-output-with-border (t :shape :rectangle :padding 6
+                                               :background +transparent-ink+
+                                               :filled t)
+              (funcall function))))
+        (when tools
+          (formatting-row (stream)
+            (formatting-cell (stream :align-x :right :align-y :bottom)
+              (formatting-table (stream :x-spacing 0 :y-spacing 0)
+                (formatting-row (stream)
+                  (dolist (tool tools)
+                    (destructuring-bind (symbol object
+                                         &key (type (presentation-type-of object))
+                                         (sensitive t))
+                        tool
+                      (formatting-cell (stream)
+                        (let ((ink (if sensitive sensitive-tool-ink insensitive-tool-ink)))
+                          (if (not sensitive)
+                              (draw-symbol-box stream symbol 0 0 16 16
+                                               :symbol-size 10 :outline-ink nil
+                                               :background-ink +transparent-ink+
+                                               :ink ink)
+                              (with-output-as-presentation (stream object type :single-box t)
+                                (draw-symbol-box stream symbol 0 0 16 16
+                                                 :symbol-size 10 :outline-ink nil
+                                                 :background-ink +transparent-ink+
+                                                 :ink ink))))))))))))))))
+
+(defmacro rendering-card ((stream &rest options) &body body)
+  (setf stream (if (eq stream 't) '*standard-output* stream))
+  `(invoke-rendering-card (lambda () ,@body)
+                          :stream ,stream ,@options))
+  
+
+
+#-(and)
+(define-listener-command (com-dummy :name "Dummy") ()
+  (fresh-line)
+  (stream-increment-cursor-position *standard-output* 12 6)
+  (with-room-for-graphics (t :first-quadrant nil)
+    (rendering-card (t :symbol :user-secret :symbol-size 72
+                       :tools `((:trash (com-clear-console) :type command)
+                                (:arrow-left (com-dummy) :type command :sensitive nil)
+                                (:arrow-right (com-dummy) :type command)))
+      (with-text-face (t :bold)
+        (format t "~&Hello World~%~%"))
+      (format t "This could be a good place to put advertizing at. Just ~
+                 ~&send us a message, and we send you a quote!~
+                 ~&~%Our hotline can be reached 24/7 from around the~
+                 ~&the country. Give it a try!")
+      nil)))
