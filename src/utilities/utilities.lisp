@@ -99,3 +99,17 @@
      
                     
                
+
+
+(defmacro dotails ((var list &optional result) &body body)
+  (let ((temp (gensym))
+        (restart (gensym)))
+    `(let ((,temp ,list) ,var)
+       (block nil
+         (tagbody
+            ,restart
+            (setf ,var ,temp)
+            (tagbody ,@body)
+            (if (not (consp ,temp)) (return (progn ,result)))
+            (setf ,temp (cdr ,temp))
+            (go ,restart))))))

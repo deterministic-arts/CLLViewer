@@ -5,10 +5,13 @@
                   #:babel #:cl-date-time-parser #:zlib #:flexi-streams
                   #:darts.lib.email-address #:zcdb #:trivial-open-browser #:puri
                   (#:darts.lib.mimetypes #:darts.lib.mime-type)
-                  (#:darts.lib.sqlite-utilities #:darts.lib.sqlite-connection))
+                  (#:darts.lib.sqlite-utilities #:darts.lib.sqlite-connection)
+                  #:clim-font-awesome)
   :do (multiple-value-bind (system package) (if (atom spec) (values spec spec) (values (first spec) (second spec)))
         (unless (find-package package)
           (ql:quickload system))))
+
+(clim-symbol-font:register-symbol-font)
 
 (progn
   (load "src/utilities/package")

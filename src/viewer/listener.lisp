@@ -369,7 +369,7 @@
   (preserving-nodes ()
     (let ((store (node-store child)))
       (reparent-node child parent)
-      (with-simple-progress ()
+      (with-simple-progress (t :erase-view t)
         (cll-indexer:update-message-counters store :children-only t)
         (flush-message-caches store)))))
 
@@ -394,6 +394,23 @@
     (let* ((store (listener-store *application-frame*))
            (spam (find-node :spam store)))
       (reparent-node object spam))))
+
+(define-command (com-mark-as-spam-and-go-to-next
+                  :command-table global-commands
+                  :enabled-if listener-store
+                  :name "Move To Trash And Skip")
+    ((object 'node :gesture (:delete 
+                             :tester ((object)
+                                      (and (typep object 'thread-root-message)
+                                           (not (find-if (lambda (elt) (typep elt 'spam-node))
+                                                         (node-path object)))))
+                             :documentation "Mark As Spam")))
+  (let ((next (node-successor object))
+        (prev (node-predecessor object))
+        (parent (node-parent object)))
+    (let ((selection (or next prev parent)))
+      (setf (listener-selection *application-frame*) selection)
+      (com-mark-as-spam object))))    
 
 (define-command (com-move-to-threads
                   :command-table global-commands
@@ -595,25 +612,51 @@
         nil)))
               
 
+(defun draw-symbol-box (stream symbol x1 y1 x2 y2
+                        &key
+                          (ink +foreground-ink+) (outline-ink ink) symbol-size
+                          (background-ink +background-ink+))
+  (with-sheet-medium (medium stream)
+    (let ((text (string (clim-symbol-font:symbol-character symbol)))
+          (style (clim-symbol-font:symbol-text-style :stream stream :size symbol-size)))
+      (multiple-value-bind (tw th) (text-size medium text :text-style style)
+        (when background-ink
+          (draw-rectangle* stream x1 y1 x2 y2 :filled t :ink background-ink))
+        (draw-text* stream text (- (/ (+ x1 x2) 2) (/ tw 2)) (- (/ (+ y1 y2) 2) (/ th 2))
+                    :ink ink :text-style style :align-x :left :align-y :top)
+        (when outline-ink
+          (draw-rectangle* stream x1 y1 x2 y2 :filled nil :ink outline-ink))))))
+
 (defun display-toolbox (frame pane)
   (let* ((selection (listener-selection frame))
          (successor (and selection (node-successor selection)))
          (predecessor (and selection (node-predecessor selection)))
          (parent (and selection (node-parent selection))))
-    (centering-output (pane :vertically t :horizontally nil)
+    (centering-output (pane :vertically t :horizontally nil :hpad 2)
     (labels 
-        ((show-button (caption object)
+        ((paint (caption active)
+           (let ((fg (if active +black+ +gray30+)))
+             (draw-symbol-box pane caption 0 0 26 26
+                              :ink fg :background-ink +transparent-ink+
+                              :outline-ink nil)))
+         (show-button (caption command)
+           (formatting-cell (pane)
+             (if (not command)
+                 (paint caption nil)
+                 (with-output-as-presentation (pane command 'command :single-box t)
+                   (paint caption t)))))
+         (show-select-button (caption object)
            (formatting-cell (pane)
              (if (not object)
-                 (with-drawing-options (pane :ink +gray30+) 
-                   (write-string caption pane))
+                 (paint caption nil)
                  (with-output-as-presentation (pane `(com-select-node ,object) 'command :single-box t)
-                   (write-string caption pane))))))
-      (formatting-table (pane :x-spacing "WW")
+                   (paint caption t))))))
+      (formatting-table (pane :x-spacing 3)
         (formatting-row (pane)
-          (show-button "Previous" predecessor)
-          (show-button "Parent" parent)
-          (show-button "Next" successor)))))))
+          (show-select-button :arrow-left predecessor)
+          (show-select-button :arrow-up parent)
+          (show-select-button :arrow-right successor)
+          (show-button :trash (if selection `(com-mark-as-spam-and-go-to-next ,selection) nil))))))))
 
       
 (defun display-header (frame pane)
@@ -759,13 +802,7 @@
      :type list :initform nil :initarg :items
      :reader background-work-items)))
 
-
-
-
-
-  
-                                 
-       
+#-(and)
 (define-listener-command (com-dummy :name "Dummy") ()
   (with-inline-progress (progress t :sum-label "Total" :partial-view +light-progress-bar-view+) (list :set-up :work :tear-down)
     (loop
@@ -780,21 +817,30 @@
        for k upfrom 0 to 100 by 25
        do (progress :tear-down (/ k 100))
           (sleep 0.1))))
-                    
-
-
-
-  #-(and)
-  (let* ((stream *standard-output*)
-         (progress 0)
-         (record (updating-output (stream)
-                   (updating-output (stream :cache-value progress :unique-id 'progress)
-                     (present (/ progress 100) 'progress-value :view +progress-bar-view+ :stream stream)
-                     (write-char #\space stream)
-                     (present (/ progress 100) 'progress-value :stream stream)))))
-    (force-output stream)
-    (loop
-       for k upfrom 0 to 10
-       do (sleep 1)
-          (setf progress (* k 10))
-          (redisplay record stream)))
+#-(and)
+(define-listener-command (com-dummy :name "Dummy") ()
+  (formatting-table (t :x-spacing 6 :y-spacing 6)
+    (surrounding-output-with-border (t)
+      (formatting-row ()
+        (formatting-cell ()
+          (write-string "A"))
+        (formatting-cell ()
+          (write-string "B"))
+        (formatting-cell (t :align-x :center)
+          (write-string "C"))))
+    (surrounding-output-with-border (t)
+      (formatting-row ()
+        (formatting-cell ()
+          (write-string "A 123 Hello"))
+        (formatting-cell ()
+          (write-string "B Bubsidupsi"))
+        (formatting-cell ()
+          (write-string "C Brim Brim")))
+      (formatting-row ()
+        (formatting-cell ()
+          (write-string "B Bubsidupsi"))
+        (formatting-cell ()
+          (write-string "A 123 Hello"))
+        (formatting-cell ()
+          (write-string "C Brim Brim")))
+        )))
