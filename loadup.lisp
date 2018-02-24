@@ -15,6 +15,7 @@
 
 (progn
   (load "src/utilities/package")
+  (load "src/utilities/datetime")
   (load "src/utilities/utilities")
   (load "src/utilities/progress"))
 
