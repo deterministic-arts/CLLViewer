@@ -173,31 +173,27 @@
 
 
 
-(defstruct (local-date-time (:copier nil) (:conc-name nil)
-                            (:constructor make-local-date-time-1 (ldt-date ldt-time)))
-  (ldt-date (error "missing date") :type local-date :read-only t)
+(defstruct (local-date-time (:copier nil) (:conc-name nil) (:include local-date)
+                            (:constructor make-local-date-time-1 (ldate-value ldate-weekday ldt-time)))
   (ldt-time (error "missing time") :type local-time :read-only t))
 
 (defun current-local-date-time (&optional (tz nil have-tz))
   (multiple-value-bind (ss mm hh d m y wd) (apply #'decode-universal-time (get-universal-time) (and have-tz (list tz)))
-    (make-local-date-time-1 (make-local-date-1 (logior (ash y 16) (ash m 8) d) wd)
+    (make-local-date-time-1 (logior (ash y 16) (ash m 8) d) wd
                             (make-local-time-1 (logior (ash hh 16) (ash mm 8) ss) 0))))
 
-(defun make-local-date-time (year month day hour minute second &optional (nanos 0))
-  (make-local-date-time-1 (make-local-date year month day)
-                          (make-local-time hour minute second nanos)))
-
-(defmethod local-year ((object local-date-time))
-  (local-date-year (ldt-date object)))
-
-(defmethod local-month ((object local-date-time))
-  (local-date-month (ldt-date object)))
-
-(defmethod local-day ((object local-date-time))
-  (local-date-day (ldt-date object)))
-
-(defmethod local-weekday ((object local-date-time))
-  (local-date-weekday (ldt-date object)))
+(defun make-local-date-time (year month day &optional (hour 0) (minute 0) (second 0) (nanos 0))
+  (macrolet ((with-asserted-type ((value type) &body body)
+               `(if (not (typep ,value ',type))
+                    (error 'type-error :datum ,value :expected-type ',type)
+                    (progn ,@body))))
+    (with-asserted-type (year (integer 1900 2038))
+      (with-asserted-type (month (integer 1 12))
+        (let ((max-day (days-in-month year month)))
+          (if (not (typep day `(integer 1 ,max-day)))
+              (error 'type-error :datum day :expected-type `(integer 1 ,max-day))
+              (make-local-date-time-1 (logior (ash year 16) (ash month 8) day) nil
+                                      (make-local-time hour minute second nanos))))))))
 
 (defmethod local-hour ((object local-date-time))
   (local-time-hour (ldt-time object)))
@@ -219,20 +215,19 @@
 
 (defun universal-time-to-local-date-time (utime &optional (tz nil have-tz))
   (multiple-value-bind (ss mm hh d m y wd) (apply #'decode-universal-time utime (and have-tz (list tz)))
-    (make-local-date-time-1 (make-local-date-1 (logior (ash y 16) (ash m 8) d) wd)
+    (make-local-date-time-1 (logior (ash y 16) (ash m 8) d) wd
                             (make-local-time-1 (logior (ash hh 16) (ash mm 8) ss) 0))))
 
 (defun local-date-time= (ob1 ob2)
   (or (eq ob1 ob2)
-      (and (local-date= (ldt-date ob1) (ldt-date ob2))
+      (and (local-date= ob1 ob2)
            (local-time= (ldt-time ob1) (ldt-time ob2)))))
 
 (defun local-date-time-hash (object)
-  (sxhash (logxor (local-date-hash (ldt-date object))
-                  (local-time-hour (ldt-time object)))))
+  (sxhash (logxor (ldate-value object) (local-time-hash (ldt-time object)))))
 
 (defun local-date-time< (ob1 ob2)
-  (let ((d1 (ldate-value (ldt-date ob1))) (d2 (ldate-value (ldt-date ob2))))
+  (let ((d1 (ldate-value ob1)) (d2 (ldate-value ob2)))
     (cond
       ((< d1 d2) t)
       ((> d1 d2) nil)
@@ -254,7 +249,7 @@
 
 (defparameter +default-date+ (make-local-date 1970 1 1))
 (defparameter +default-time+ (make-local-time 12 0 0 0))
-(defparameter +default-date-time+ (make-local-date-time-1 +default-date+ +default-time+))
+(defparameter +default-date-time+ (make-local-date-time 1970 1 1 12 0 0 0))
 
 (defmethod local-date ((object local-date) &key)
   object)
@@ -263,7 +258,7 @@
   object)
 
 (defmethod local-date ((object local-date-time) &key)
-  (ldt-date object))
+  (make-local-date-1 (ldate-value object) (ldate-weekday object)))
 
 (defmethod local-time ((object local-date-time) &key)
   (ldt-time object))
@@ -279,20 +274,23 @@
 
 (defmethod local-date-time ((object integer) &key ((:timezone tz) nil have-tz))
   (multiple-value-bind (ss mm hh d m y w) (apply #'decode-universal-time object (and have-tz (list tz)))
-    (make-local-date-time-1 (make-local-date-1 (logior (ash y 16) (ash m 8) d) w)
+    (make-local-date-time-1 (logior (ash y 16) (ash m 8) d) w
                             (make-local-time-1 (logior (ash hh 16) (ash mm 8) ss) 0))))
+
+(defmethod local-date-time ((object local-date-time) &key)
+  object)
 
 (defmethod local-date-time ((object local-date)
                             &rest options
                             &key (defaults +default-date-time+))
-  (make-local-date-time-1 object
+  (make-local-date-time-1 (ldate-value object) (ldate-weekday object)
                           (apply #'local-time defaults (remove-from-plist options :defaults))))
 
 (defmethod local-date-time ((object local-time)
                             &rest options
                             &key (defaults +default-date-time+))
-  (make-local-date-time-1 (apply #'local-date defaults (remove-from-plist options :defaults))
-                          object))
+  (let ((d (apply #'local-date defaults (remove-from-plist options :defaults))))
+    (make-local-date-time-1 (ldate-value d) (ldate-weekday d) object)))
 
 (defmethod local-date (object &key)
   (error 'type-error :datum object :expected-type 'local-date))

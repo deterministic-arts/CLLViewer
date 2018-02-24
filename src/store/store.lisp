@@ -409,10 +409,10 @@
 
 (defun to-universal (value)
   (etypecase value
-    (null nil)
-    (integer value)
+    (local-date-time (local-date-time-to-universal-time value 0))
     (local-date (local-date-to-universal-time value 0))
-    (local-date-time (local-date-time-to-universal-time value 0))))
+    (null nil)
+    (integer value)))
 
 
 (defmethod map-over-child-nodes (function (object indexed-node) 
