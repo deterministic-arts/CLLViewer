@@ -692,17 +692,18 @@
          (path (and selection (listener-stack frame))))
     (when range
       (let ((threads (date-range-threads range)))
-        (loop
-          :for object :in threads
-          :for face := (if (member object path) :bold :roman)
-          :do (fresh-line pane)
-              (with-output-as-presentation (pane object 'node :single-box t)
-                (with-text-face (pane face)
-                (format pane "~A~@[ (~D)~]" 
-                        (or (node-title object) "(Unknown)")
-                        (and (plusp (node-descendant-count object))
-                             (node-descendant-count object))))))))))
- 
+        (when threads
+          (formatting-table (pane)
+            (loop
+               :for object :in threads
+               :for face := (if (member object path) :bold :roman)
+               :do (with-output-as-presentation (pane object 'node :single-box t)
+                     (formatting-row (pane)
+                       (formatting-cell (pane :align-x :right)
+                         (princ (1+ (node-descendant-count object)) pane))
+                       (formatting-cell (pane)
+                         (with-text-face (pane face)
+                           (princ (or (node-title object) "(Unknown)") pane)))))))))))) 
 
 (defun display-primary (frame pane)
   (let* ((selection (listener-selection frame))
@@ -766,8 +767,9 @@
 (defun display-current-thread (frame pane)
   (let* ((selection (listener-selection frame))
          (root (and selection (node-thread selection)))
-         (pixels-per-level 16))
+         (pixels-per-level 8))
     (when root
+      (with-text-size (pane :tiny)
       (labels
           ((highlightp (object) (eql object selection))
            (show (object level)
@@ -781,7 +783,7 @@
              (when (plusp (node-child-count object))
                (map-over-child-nodes (lambda (child) (show child (1+ level)))
                                      object))))
-        (show root 0)))))
+        (show root 0))))))
 
 
 
