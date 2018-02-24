@@ -20,6 +20,10 @@
   (load "src/utilities/progress"))
 
 (progn
+  (load "src/clim-utilities/package")
+  (load "src/clim-utilities/datetime"))
+
+(progn
   (load "src/indexer/package")
   (load "src/indexer/msgid")
   (load "src/indexer/scanfile"))

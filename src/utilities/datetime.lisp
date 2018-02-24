@@ -343,3 +343,68 @@
     (print-local-date-time object stream)))
 
 
+
+
+(defun first-of-month (object)
+  (let ((date (local-date object)))
+    (if (eql 1 (local-date-day date))
+        date
+        (make-local-date (local-date-year date) (local-date-month date) 1))))
+
+(defun last-of-month (object)
+  (let* ((date (local-date object))
+         (year (local-date-year date))
+         (month (local-date-month date))
+         (day (local-date-day date))
+         (max-day (days-in-month year month)))
+    (if (eql max-day day) date
+        (make-local-date year month max-day))))
+
+(defun previous-month (object &key day)
+  (let* ((date (local-date object))
+         (year (local-date-year date))
+         (month (local-date-month date))
+         (dday (local-date-day date)))
+    (multiple-value-bind (new-year new-month)
+        (if (eql 1 month)
+            (values (1- year) 12)
+            (values year (1- month)))
+      (let ((max (days-in-month new-year new-month)))
+        (make-local-date new-year new-month
+                         (cond
+                           ((eq day :last) max)
+                           ((eq day :first) 1)
+                           ((null day) (min dday max))
+                           (t day)))))))
+
+(defun next-month (object &key day)
+  (let* ((date (local-date object))
+         (year (local-date-year date))
+         (month (local-date-month date))
+         (dday (local-date-day date)))
+    (multiple-value-bind (new-year new-month)
+        (if (eql 12 month)
+            (values (1+ year) 1)
+            (values year (1+ month)))
+      (let ((max (days-in-month new-year new-month)))
+        (make-local-date new-year new-month
+                         (cond
+                           ((eq day :last) max)
+                           ((eq day :first) 1)
+                           ((null day) (min dday max))
+                           (t day)))))))
+
+
+
+
+(defgeneric plus-days (object days &key))
+
+(defmethod plus-days ((object local-date) (days integer) &key)
+  (let* ((old-u (local-date-to-universal-time object 0))
+         (new-u (+ old-u (* days 24 60 60))))
+    (universal-time-to-local-date new-u 0)))
+
+(defmethod plus-days ((object local-date-time) (days integer) &key ((:timezone tz) nil have-tz))
+  (let* ((old-u (apply #'local-date-time-to-universal-time object (and have-tz (list tz))))
+         (new-u (+ old-u (* days 24 60 60))))
+    (apply #'local-date-time new-u (and have-tz (list :timezone tz)))))
