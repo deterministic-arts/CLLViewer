@@ -179,9 +179,13 @@
   (ldt-time (error "missing time") :type local-time :read-only t))
 
 (defun current-local-date-time (&optional (tz nil have-tz))
-  (multiple-value-bind (hh mm ss d m y wd) (apply #'decode-universal-time (get-universal-time) (and have-tz (list tz)))
+  (multiple-value-bind (ss mm hh d m y wd) (apply #'decode-universal-time (get-universal-time) (and have-tz (list tz)))
     (make-local-date-time-1 (make-local-date-1 (logior (ash y 16) (ash m 8) d) wd)
                             (make-local-time-1 (logior (ash hh 16) (ash mm 8) ss) 0))))
+
+(defun make-local-date-time (year month day hour minute second &optional (nanos 0))
+  (make-local-date-time-1 (make-local-date year month day)
+                          (make-local-time hour minute second nanos)))
 
 (defmethod local-year ((object local-date-time))
   (local-date-year (ldt-date object)))
@@ -213,8 +217,8 @@
          (local-day object) (local-month object) (local-year object)
          (and have-tz (list tz))))
 
-(defun universal-time-local-date-time (utime &optional (tz nil have-tz))
-  (multiple-value-bind (hh mm ss d m y wd) (apply #'decode-universal-time utime (and have-tz (list tz)))
+(defun universal-time-to-local-date-time (utime &optional (tz nil have-tz))
+  (multiple-value-bind (ss mm hh d m y wd) (apply #'decode-universal-time utime (and have-tz (list tz)))
     (make-local-date-time-1 (make-local-date-1 (logior (ash y 16) (ash m 8) d) wd)
                             (make-local-time-1 (logior (ash hh 16) (ash mm 8) ss) 0))))
 
@@ -270,11 +274,11 @@
     (make-local-date-1 (logior (ash y 16) (ash m 8) d) w)))
 
 (defmethod local-time ((object integer) &key ((:timezone tz) nil have-tz))
-  (multiple-value-bind (h m s) (apply #'decode-universal-time object (and have-tz (list tz)))
+  (multiple-value-bind (s m h) (apply #'decode-universal-time object (and have-tz (list tz)))
     (make-local-time-1 (logior (ash h 16) (ash m 8) s) 0)))
 
 (defmethod local-date-time ((object integer) &key ((:timezone tz) nil have-tz))
-  (multiple-value-bind (hh mm ss d m y w) (apply #'decode-universal-time object (and have-tz (list tz)))
+  (multiple-value-bind (ss mm hh d m y w) (apply #'decode-universal-time object (and have-tz (list tz)))
     (make-local-date-time-1 (make-local-date-1 (logior (ash y 16) (ash m 8) d) w)
                             (make-local-time-1 (logior (ash hh 16) (ash mm 8) ss) 0))))
 

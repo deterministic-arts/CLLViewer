@@ -521,8 +521,9 @@
                              :n-columns 4
                              :x-spacing "WW" :y-spacing 6
                              :printer (lambda (object stream)
-                                        (multiple-value-bind (sec min hour day month year) (decode-universal-time (date-range-start object) 0)
-                                          (declare (ignore sec min hour day))
+                                        (let* ((date (date-range-start object))
+                                               (year (local-year date))
+                                               (month (local-month date)))
                                           (with-drawing-options (stream :ink (if (eq object current) +blue+ +black+))
                                             (with-text-face (stream (if (eql month 1) :bold :roman))
                                               (format stream "~A ~D"
@@ -602,13 +603,13 @@
         (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Month" pane)))
         (formatting-cell (pane)
           (when range
-            (multiple-value-bind (sec min hour day month year) (decode-universal-time (date-range-start range) 0)
-              (declare (ignore sec min hour day))
+            (let ((date (date-range-start range)))
               (with-output-as-presentation (pane range 'current-date-range :single-box t)
                 (format pane "~A ~D (~D)"
                         (aref '#("" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December") 
-                              month)
-                        year (date-range-count range)))))))
+                              (local-month date))
+                        (local-year date)
+                        (date-range-count range)))))))
         nil)))
               
 
@@ -666,10 +667,7 @@
         (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Date" pane)))
         (formatting-cell (pane) 
           (when (messagep selection)
-            (multiple-value-bind (sec min hour day month year) (decode-universal-time (message-date selection) 0)
-              (declare (ignore sec))
-              (format pane "~4,'0D-~2,'0D-~2,'0D, ~2,'0D:~2,'0D UTC"
-                      year month day hour min)))))
+            (print-local-date-time (message-date selection) pane))))
       (formatting-row (pane)
         (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Author" pane)))
         (formatting-cell (pane) 

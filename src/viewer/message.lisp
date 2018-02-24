@@ -70,10 +70,10 @@
      :type node :initarg :node
      :reader date-range-node)
    (start
-     :type integer :initarg :start
+     :type local-date :initarg :start
      :reader date-range-start)
    (end
-     :type integer :initarg :end
+     :type local-date :initarg :end
      :reader date-range-end)
    (count
      :type integer :initarg :count
@@ -84,8 +84,8 @@
 
 (defmethod print-object ((object date-range) stream)
   (print-unreadable-object (object stream :type t :identity t)
-    (multiple-value-bind (sec min hour day month year) (decode-universal-time (date-range-start object) 0)
-      (declare (ignore sec min hour day))
+    (let ((year (local-year (date-range-start object)))
+          (month (local-month (date-range-start object))))
       (format stream "~4,'0D-~A OF ~S"
               year 
               (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)
@@ -94,14 +94,12 @@
 
 (defun collect-date-ranges (node)
   (loop
-    :for (year month count) :in (collect-node-date-ranges node)
-    :for start := (encode-universal-time 0 0 0 1 month year 0)
-    :collect (multiple-value-bind (end-year end-month)
-                 (if (= 12 month) (values (1+ year) 1) (values year (1+ month)))
-               (make-instance 'date-range
-                              :node node :start start 
-                              :end (encode-universal-time 0 0 0 1 end-month end-year 0)
-                              :count count))))
+     :for (year month count) :in (collect-node-date-ranges node)
+     :for start := (make-local-date-time year month 1 0 0 0)
+     :for end := (if (eql month 12) (make-local-date-time (1+ year) 1 1 0 0 0) (make-local-date-time year (1+ month) 1 0 0 0))
+     :collect (make-instance 'date-range
+                             :node node :start start :end end
+                             :count count)))
 
 (defun date-range-threads (range)
   (let (result)
@@ -145,8 +143,8 @@
                   (ranges (section-date-range-list thread))
                   (date (message-date object))
                   (answer (find-if (lambda (range)
-                                     (and (<= (date-range-start range) date)
-                                          (< date (date-range-end range))))
+                                     (and (local-date-time<= (date-range-start range) date)
+                                          (local-date-time< date (date-range-end range))))
                                    ranges)))
              (setf (object-property object 'node-section-date-range) answer)
              answer))))))

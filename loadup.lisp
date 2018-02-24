@@ -20,7 +20,7 @@
   (load "src/utilities/progress"))
 
 (progn
-  (load "src/clim-utilities/package")
+  (load "src/clim-utilities/packages")
   (load "src/clim-utilities/datetime"))
 
 (progn

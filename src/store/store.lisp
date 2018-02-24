@@ -112,6 +112,8 @@
 
 
 
+(defparameter +default-date+ (make-local-date-time 1970 1 1 0 0 0))
+
 (defclass basic-message (message)
   ((identifier
      :type msgid :initarg :identifier
@@ -123,7 +125,7 @@
      :type (or null string) :initarg :author :initform nil
      :reader message-author)
    (date
-     :type (integer 0) :initarg :date :initform 0
+     :type local-date-time :initarg :date :initform +default-date+
      :reader message-date)))
 
 (defclass indexed-node (node)
@@ -289,7 +291,7 @@
     (or object
         (let* ((identifier (make-msgid (statement-column-value stmt 1)))
                (parent (statement-column-value stmt 2))
-               (date (statement-column-value stmt 3))
+               (date (universal-time-to-local-date-time (statement-column-value stmt 3) 0))
                (author (statement-column-value stmt 4))
                (n-children (statement-column-value stmt 5))
                (subject (statement-column-value stmt 6))
@@ -405,10 +407,22 @@
 
 (defconstant +unix-epoch+ (encode-universal-time 0 0 0 1 1 1970 0))
 
+(defun to-universal (value)
+  (etypecase value
+    (null nil)
+    (integer value)
+    (local-date (local-date-to-universal-time value 0))
+    (local-date-time (local-date-time-to-universal-time value 0))))
+
 
 (defmethod map-over-child-nodes (function (object indexed-node) 
-                                 &key offset limit from-end start-date end-date
-                                 &aux (use-start (and start-date (> start-date +unix-epoch+))))
+                                 &key offset limit from-end
+                                   ((:start-date sd) nil)
+                                   ((:end-date ed) nil)
+                                 &aux
+                                   (start-date (to-universal sd))
+                                   (end-date (to-universal ed))
+                                   (use-start (and start-date (> start-date +unix-epoch+))))
   (when (plusp (node-child-count object))
     (let ((query (msg-query :where (format nil "m.parent_id = ?~
                                                 ~:[~; AND m.date >= ?~]~
@@ -423,8 +437,11 @@
                                 (when end-date (list end-date)))))))
 
 (defmethod count-descendant-nodes ((object indexed-node) 
-                                   &key start-date end-date
-                                   &aux (use-start (and start-date (> start-date +unix-epoch+))))
+                                   &key ((:start-date sd) nil) ((:end-date ed) nil)
+                                   &aux
+                                     (start-date (to-universal sd))
+                                     (end-date (to-universal ed))
+                                     (use-start (and start-date (> start-date +unix-epoch+))))
                                                          
   (count-nodes (node-store object)
                (format nil "m.tree_start >= ? AND m.tree_start < ?~
@@ -451,26 +468,28 @@
     result))
 
 (defmethod node-next-sibling ((object managed-node))
-  (let ((parent (node-parent-key object))
-        (self (node-key object))
-        (date (message-date object))
-        (query (msg-query :where "m.parent_id = ? AND (m.date > ? OR (m.date = ? AND m.id < ?))"
-                          :order-by '("m.date ASC" "m.id DESC")
-                          :limit 1))
-        result)
-    (do-messages (msg (node-store object) query (list parent date date self))
+  (let* ((parent (node-parent-key object))
+         (self (node-key object))
+         (date (message-date object))
+         (u-date (to-universal date))
+         (query (msg-query :where "m.parent_id = ? AND (m.date > ? OR (m.date = ? AND m.id < ?))"
+                           :order-by '("m.date ASC" "m.id DESC")
+                           :limit 1))
+         result)
+    (do-messages (msg (node-store object) query (list parent u-date u-date self))
       (setf result msg))
     result))
 
 (defmethod node-previous-sibling ((object managed-node))
-  (let ((parent (node-parent-key object))
-        (date (message-date object))
-        (self (node-key object))
-        (query (msg-query :where "m.parent_id = ? AND (m.date < ? OR (m.date = ? AND m.id > ?))"
-                          :order-by '("m.date DESC" "m.id ASC")
-                          :limit 1))
-        result)
-    (do-messages (msg (node-store object) query (list parent date date self))
+  (let* ((parent (node-parent-key object))
+         (date (message-date object))
+         (u-date (to-universal date))
+         (self (node-key object))
+         (query (msg-query :where "m.parent_id = ? AND (m.date < ? OR (m.date = ? AND m.id > ?))"
+                           :order-by '("m.date DESC" "m.id ASC")
+                           :limit 1))
+         result)
+    (do-messages (msg (node-store object) query (list parent u-date u-date self))
       (setf result msg))
     result))
 
