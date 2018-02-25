@@ -22,15 +22,6 @@
   (:command-table (listener :inherit-from (global-commands)))
   (:menu-bar nil)
   (:panes
-    (memory :application
-      :name 'memory
-      :borders nil
-      :background +white+
-      :display-function 'display-memory
-      :scroll-bars t
-      :display-time :command-loop
-      :end-of-line-action :allow
-      :end-of-page-action :allow)
     (toolbox :application
       :height 27 :min-height 27 :max-height 27
       :name 'toolbox
@@ -61,7 +52,6 @@
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (memory-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
-    (threads-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
     (current-thread :application 
       :name 'current-thread
       :borders nil
@@ -108,12 +98,8 @@
                     primary)))
               toolbox)
             memory-adjuster
-            (vertically (:x-spacing 3 :y-spacing 3 :background +white+)
-              (outlining (:thickness 1 :foreground +black+)
-                (restraining () memory))
-              threads-adjuster
-              (outlining (:thickness 1 :foreground +black+)
-                current-thread)))
+            (outlining (:thickness 1 :foreground +black+)
+              current-thread))
           primary-adjuster
           (outlining (:thickness 1 :foreground +black+) interactor*)
           documentation)))))
@@ -515,6 +501,26 @@
       (let ((selection (car (date-range-threads range))))
         (setf (listener-selection *application-frame*) selection)))))
 
+
+(define-command (com-pick-bookmark
+                  :enabled-if listener-store
+                  :name "Pick Bookmark"
+                  :command-table listener)
+    ()
+  (let* ((store (listener-store *application-frame*))
+         (bookmarks (list-bookmarks store)))
+    (when bookmarks
+      (let ((selection (menu-choose bookmarks
+                                    :label "Bookmark"
+                                    :printer (lambda (object stream)
+                                               (format stream "~A by ~A~@[: ~A~]"
+                                                       (or (node-title (bookmark-node object)) "(Unknown)")
+                                                       (or (and (messagep (bookmark-node object)) (message-author (bookmark-node object))) "(Unknown)")
+                                                       (bookmark-description object))))))
+        (when selection
+          (com-select-node (bookmark-node selection)))))))
+
+
 (define-presentation-to-command-translator pick-date-range-translator
     (current-date-range com-pick-date-range global-commands
       :gesture :select
@@ -606,36 +612,46 @@
         (when outline-ink
           (draw-rectangle* stream x1 y1 x2 y2 :filled nil :ink outline-ink))))))
 
+
 (defun display-toolbox (frame pane)
   (let* ((selection (listener-selection frame))
          (successor (and selection (node-successor selection)))
          (predecessor (and selection (node-predecessor selection)))
          (parent (and selection (node-parent selection))))
     (centering-output (pane :vertically t :horizontally nil :hpad 2)
-    (labels 
-        ((paint (caption active)
-           (let ((fg (if active +black+ +gray30+)))
-             (draw-symbol-box pane caption 0 0 22 22
-                              :ink fg :background-ink +transparent-ink+
-                              :outline-ink nil)))
-         (show-button (caption command)
-           (formatting-cell (pane)
-             (if (not command)
-                 (paint caption nil)
-                 (with-output-as-presentation (pane command 'command :single-box t)
-                   (paint caption t)))))
-         (show-select-button (caption object)
-           (formatting-cell (pane)
-             (if (not object)
-                 (paint caption nil)
-                 (with-output-as-presentation (pane `(com-select-node ,object) 'command :single-box t)
-                   (paint caption t))))))
-      (formatting-table (pane :x-spacing 3)
-        (formatting-row (pane)
-          (show-select-button :arrow-left predecessor)
-          (show-select-button :arrow-up parent)
-          (show-select-button :arrow-right successor)
-          (show-button :trash (if selection `(com-mark-as-spam-and-go-to-next ,selection) nil))))))))
+      (labels 
+          ((paint (caption active bgink)
+             (let ((fg (if active +black+ +gray30+)))
+               (draw-symbol-box pane caption 0 0 22 22
+                                :ink fg :background-ink bgink
+                                :outline-ink nil)))
+           (show-button (caption command &key (background-ink +transparent-ink+))
+             (formatting-cell (pane)
+               (if (not command)
+                   (paint caption nil background-ink)
+                   (with-output-as-presentation (pane command 'command :single-box t)
+                     (paint caption t background-ink)))))
+           (show-select-button (caption object)
+             (formatting-cell (pane)
+               (if (not object)
+                   (paint caption nil +transparent-ink+)
+                   (with-output-as-presentation (pane `(com-select-node ,object) 'command :single-box t)
+                     (paint caption t +transparent-ink+))))))
+        (formatting-table (pane :x-spacing 3)
+          (formatting-row (pane)
+            (show-select-button :arrow-left predecessor)
+            (show-select-button :arrow-up parent)
+            (show-select-button :arrow-right successor)
+            (show-button :tags (and (listener-store frame) `(com-pick-bookmark)))
+            (formatting-cell (pane) (write-string "    " pane))
+            (let* ((mark (and (listener-store frame) selection (find-bookmark (message-identifier selection) (listener-store frame))))
+                   (cmd (cond
+                          ((not selection) nil)
+                          ((not mark) `(com-add-bookmark ,selection))
+                          (t `(com-delete-bookmark ,mark)))))
+              (show-button :bookmark cmd
+                           :background-ink (if mark +gray85+ +transparent-ink+)))
+            (show-button :trash (and selection `(com-mark-as-spam-and-go-to-next ,selection)))))))))
 
       
 (defun display-header (selection pane)
@@ -713,13 +729,12 @@
               (terpri pane))))))))
 
 
-(defun display-memory (frame pane)
-  (let* ((memory (listener-memory frame))
-         (store (listener-store frame))
-         (bookmarks (and store (list-bookmarks store))))
+(defun display-current-thread (frame pane)
+  (let* ((selection (listener-selection frame))
+         (root (and selection (node-thread selection)))
+         (pixels-per-level 8)
+         (memory (listener-memory frame)))
     (when memory
-      (with-text-face (pane :bold)
-        (format pane "Remembered Nodes~%"))
       (formatting-item-list (pane :x-spacing "WW")
         (dolist (item memory)
           (formatting-cell (pane)
@@ -727,39 +742,20 @@
               (format pane "~A by ~A"
                       (or (node-title item) "(Unknown)")
                       (or (and (messagep item) (message-author item)) "(Unknown)")))))))
-    (when bookmarks
-      (with-text-face (pane :bold)
-        (format pane "~&Bookmarks~%"))
-      (formatting-item-list (pane :x-spacing "WW")
-        (dolist (item bookmarks)
-          (formatting-cell (pane)
-            (with-output-as-presentation (pane item 'bookmark :single-box t)
-              (format pane "~A by ~A~@[: ~A~]"
-                      (or (node-title (bookmark-node item)) "(Unknown)")
-                      (or (and (messagep (bookmark-node item)) (message-author (bookmark-node item))) "(Unknown)")
-                      (bookmark-description item)))))))))
-
-
-
-
-(defun display-current-thread (frame pane)
-  (let* ((selection (listener-selection frame))
-         (root (and selection (node-thread selection)))
-         (pixels-per-level 8))
     (when root
       (with-text-size (pane :tiny)
-      (labels
-          ((highlightp (object) (eql object selection))
-           (show (object level)
-             (fresh-line pane)
-             (stream-increment-cursor-position pane (* level pixels-per-level) 0)
-             (with-output-as-presentation (pane object 'node :single-box t)
-               (with-text-face (pane (if (highlightp object) :bold :roman))
-                 (format pane "~@[~A~]~@[ by ~A~]"
-                         (node-title object) 
-                         (and (messagep object) (message-author object)))))
-             (when (plusp (node-child-count object))
-               (map-over-child-nodes (lambda (child) (show child (1+ level)))
-                                     object))))
-        (show root 0))))))
+        (labels
+            ((highlightp (object) (eql object selection))
+             (show (object level)
+               (fresh-line pane)
+               (stream-increment-cursor-position pane (* level pixels-per-level) 0)
+               (with-output-as-presentation (pane object 'node :single-box t)
+                 (with-text-face (pane (if (highlightp object) :bold :roman))
+                   (format pane "~@[~A~]~@[ by ~A~]"
+                           (node-title object) 
+                           (and (messagep object) (message-author object)))))
+               (when (plusp (node-child-count object))
+                 (map-over-child-nodes (lambda (child) (show child (1+ level)))
+                                       object))))
+          (show root 0))))))
 
