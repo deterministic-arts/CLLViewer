@@ -30,7 +30,6 @@
       :display-function 'display-header
       :scroll-bars nil
       :display-time :command-loop
-      ;;:default-view +tree-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (memory :application
@@ -40,7 +39,6 @@
       :display-function 'display-memory
       :scroll-bars t
       :display-time :command-loop
-      ;;:default-view +tree-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (toolbox :application
@@ -51,7 +49,6 @@
       :display-function 'display-toolbox
       :scroll-bars nil
       :display-time :command-loop
-      ;;:default-view +tree-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (dates :application 
@@ -62,7 +59,6 @@
       :display-function 'display-dates
       :scroll-bars nil
       :display-time :command-loop
-      ;;:default-view +tree-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (all-threads  :application 
@@ -72,7 +68,6 @@
       :display-function 'display-thread-list
       :scroll-bars t
       :display-time :command-loop
-      ;;:default-view +tree-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (memory-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
@@ -84,7 +79,6 @@
       :display-function 'display-current-thread
       :scroll-bars t
       :display-time :command-loop
-      ;;:default-view +tree-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (tree-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
@@ -95,7 +89,6 @@
       :display-time :command-loop
       :display-function 'display-primary
       :scroll-bars nil
-      ;;:default-view +primary-view+
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (primary-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
@@ -103,7 +96,6 @@
       (make-clim-stream-pane 
         :type 'interactor-pane
         :name 'interactor
-        ;;:default-view +listener-view+
         :borders nil
         :scroll-bars t))
     (documentation :pointer-documentation))
@@ -117,10 +109,7 @@
                 (spacing (:thickness 3 :background +white+) 
                   (restraining () dates)))
               (outlining (:thickness 1 :foreground +black+) 
-                (restraining () all-threads))
-              threads-adjuster
-              (outlining (:thickness 1 :foreground +black+)
-                (restraining () current-thread)))
+                (restraining () all-threads)))
             tree-adjuster
             (vertically (:x-spacing 3 :y-spacing 3 :background +white+)
               (outlining (:thickness 1 :foreground +black+) 
@@ -135,8 +124,12 @@
                     (scrolling (:scroll-bar t)
                       primary)))
                 memory-adjuster
-                (outlining (:thickness 1 :foreground +black+)
-                  (restraining () memory)))))
+                (vertically (:x-spacing 3 :y-spacing 3 :background +white+)
+                  (outlining (:thickness 1 :foreground +black+)
+                    (restraining () memory))
+                  threads-adjuster
+                  (outlining (:thickness 1 :foreground +black+)
+                    current-thread)))))
           primary-adjuster
           (outlining (:thickness 1 :foreground +black+) interactor*)
           documentation)))))
@@ -708,28 +701,30 @@
          (text (and (messagep selection) (message-text selection))))
     (window-clear pane)
     (when text
+      (stream-increment-cursor-position pane 0 6)
       (with-output-as-presentation (pane selection 'message :single-box t)
         (with-text-style (pane +article-text-style+)
           (let ((lines (mapcar (lambda (line) (expand-tabs line 8))
                                (split-sequence #\newline text :remove-empty-subseqs nil))))
             (dolist (line lines)
+              (stream-increment-cursor-position pane 12 0)
               (with-drawing-options (pane :ink (if (scan "^\\s*([>|:]|<\\s).*" line) +gray40+ +black+))
-              (let ((start 0))
-                (loop
-                  (multiple-value-bind (mstart mend) (scan "\\b(https?://[^/]+(?:/[a-zA-Z0-9!$%&/()=?*+~#_.:;-]*)?)" line :start start)
-                    (if (not mstart)
-                        (progn 
-                          (write-string line pane :start start) 
-                          (return))
-                        (progn
-                          (when (< start mstart) (write-string line pane :start start :end mstart))
-                          (let ((uri (ignore-errors (parse-uri (subseq line mstart mend)))))
-                            (if (not uri)
-                                (write-string line pane :start mstart :end mend)
-                                (with-output-as-presentation (pane uri 'uri :single-box t)
-                                  (with-drawing-options (pane :ink +blue+)
-                                    (write-string line pane :start mstart :end mend)))))
-                          (setf start mend)))))))
+                (let ((start 0))
+                  (loop
+                     (multiple-value-bind (mstart mend) (scan "\\b(https?://[^/]+(?:/[a-zA-Z0-9!$%&/()=?*+~#_.:;-]*)?)" line :start start)
+                       (if (not mstart)
+                           (progn 
+                             (write-string line pane :start start) 
+                             (return))
+                           (progn
+                             (when (< start mstart) (write-string line pane :start start :end mstart))
+                             (let ((uri (ignore-errors (parse-uri (subseq line mstart mend)))))
+                               (if (not uri)
+                                   (write-string line pane :start mstart :end mend)
+                                   (with-output-as-presentation (pane uri 'uri :single-box t)
+                                     (with-drawing-options (pane :ink +blue+)
+                                       (write-string line pane :start mstart :end mend)))))
+                             (setf start mend)))))))
               (terpri pane))))))))
 
 
