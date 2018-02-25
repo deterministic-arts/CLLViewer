@@ -376,7 +376,8 @@
                   :command-table global-commands
                   :enabled-if listener-store
                   :name "Move To Trash And Skip")
-    ((object 'node :gesture (:delete 
+    ((object 'node :gesture (:delete
+                             :menu nil
                              :tester ((object)
                                       (and (typep object 'thread-root-message)
                                            (not (find-if (lambda (elt) (typep elt 'spam-node))

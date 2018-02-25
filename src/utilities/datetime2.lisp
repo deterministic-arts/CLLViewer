@@ -14,7 +14,9 @@
            "POSIX-TIME-TO-LOCAL-DATE" "POSIX-TIME-TO-LOCAL-TIME" "TEMPORAL-TO-POSIX-TIME"
            "UNIVERSAL-TIME-TO-LOCAL-DATE-TIME" "UNIVERSAL-TIME-TO-LOCAL-DATE"
            "UNIVERSAL-TIME-TO-LOCAL-TIME" "TEMPORAL-TO-UNIVERSAL-TIME" "PRINT-LOCAL-DATE"
-           "PRINT-LOCAL-TIME" "PRINT-LOCAL-DATE-TIME" "ADD-SECONDS" "ADD-TIME-UNIT"))
+           "PRINT-LOCAL-TIME" "PRINT-LOCAL-DATE-TIME" "ADD-SECONDS" "ADD-TIME-UNIT"
+           "BEGINNING-OF-MONTH" "END-OF-MONTH" "MAKE-LOCAL-DATE" "MAKE-LOCAL-TIME"
+           "MAKE-LOCAL-DATE-TIME"))
 
 (in-package "LOCAL-DATE-TIME")
 
@@ -331,6 +333,7 @@
 
 
 (defparameter +midnight+ (make-local-time-1 0 0))
+(defparameter +almost-midnight+ (make-local-time-1 (logior (ash 23 16) (ash 59 8) 59) 999999999))
 (defparameter +epoch-date+ (make-local-date-1 (logior (ash 2000 16) (ash 3 8) 1) 2))
 (defparameter +epoch-date-time+ (make-local-date-time-1 +epoch-date+ +midnight+))
 
@@ -586,3 +589,40 @@
 (defun add-time-unit (object value unit)
   (multiple-value-bind (seconds nanos) (to-seconds-and-nanos value unit)
     (add-seconds object seconds nanos)))
+
+
+
+(defun ldate-first-day-of-month (object)
+  (if (eql 1 (local-date-day object))
+      object
+      (make-local-date (local-date-year object) (local-date-month object) 1)))
+
+(defun ldate-last-day-of-month (object)
+  (let ((max (days-in-month (local-date-year object) (local-date-month object))))
+    (if (eql max (local-date-day object))
+        object
+        (make-local-date (local-date-year object) (local-date-month object) max))))
+
+(defun beginning-of-month (object)
+  (etypecase object
+    (local-date (ldate-first-day-of-month object))
+    (local-date-time
+     (let ((a (ldt-date object))
+           (i (ldt-time object)))
+       (if (and (eql (local-date-day a) 1) (zerop (ltime-value i)) (zerop (ltime-nanos i)))
+           object
+           (make-local-date-time-1 (ldate-first-day-of-month a)
+                                   +midnight+))))))
+
+(defun end-of-month (object)
+  (etypecase object
+    (local-date (ldate-last-day-of-month object))
+    (local-date-time
+     (let ((a (ldt-date object))
+           (i (ldt-time object)))
+       (if (and (eql (local-date-day a) 1)
+                (eql (ltime-value i) (ltime-value +almost-midnight+))
+                (eql (ltime-nanos i) 999999999))
+           object
+           (make-local-date-time-1 (ldate-last-day-of-month a)
+                                   +almost-midnight+))))))

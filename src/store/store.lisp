@@ -409,8 +409,8 @@
 
 (defun to-universal (value)
   (etypecase value
-    (local-date-time (local-date-time-to-universal-time value 0))
-    (local-date (local-date-to-universal-time value 0))
+    (local-date-time (temporal-to-universal-time value))
+    (local-date (temporal-to-universal-time value))
     (null nil)
     (integer value)))
 
