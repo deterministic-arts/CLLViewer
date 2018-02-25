@@ -22,16 +22,6 @@
   (:command-table (listener :inherit-from (global-commands)))
   (:menu-bar nil)
   (:panes
-    (header :application
-      :height '(3 :line) :min-height '(3 :line) :max-height '(3 :line)
-      :name 'header
-      :borders nil
-      :background +white+
-      :display-function 'display-header
-      :scroll-bars nil
-      :display-time :command-loop
-      :end-of-line-action :allow
-      :end-of-page-action :allow)
     (memory :application
       :name 'memory
       :borders nil
@@ -42,7 +32,7 @@
       :end-of-line-action :allow
       :end-of-page-action :allow)
     (toolbox :application
-      :height '(2 :line) :min-height '(2 :line) :max-height '(2 :line)
+      :height 27 :min-height 27 :max-height 27
       :name 'toolbox
       :borders nil
       :background +white+
@@ -111,25 +101,19 @@
               (outlining (:thickness 1 :foreground +black+) 
                 (restraining () all-threads)))
             tree-adjuster
+            (vertically (:x-spacing 3 :y-spacing 0 :background +white+)
+              (outlining (:thickness 1 :foreground +black+)
+                (restraining ()
+                  (scrolling (:scroll-bar t)
+                    primary)))
+              toolbox)
+            memory-adjuster
             (vertically (:x-spacing 3 :y-spacing 3 :background +white+)
-              (outlining (:thickness 1 :foreground +black+) 
-                (spacing (:thickness 3 :background +white+) 
-                  (restraining () header)))
-              (outlining (:thickness 1 :foreground +black+) 
-                (spacing (:thickness 3 :background +white+) 
-                  toolbox))
-              (horizontally (:x-spacing 3 :background +white+)
-                (outlining (:thickness 1 :foreground +black+) 
-                  (restraining ()
-                    (scrolling (:scroll-bar t)
-                      primary)))
-                memory-adjuster
-                (vertically (:x-spacing 3 :y-spacing 3 :background +white+)
-                  (outlining (:thickness 1 :foreground +black+)
-                    (restraining () memory))
-                  threads-adjuster
-                  (outlining (:thickness 1 :foreground +black+)
-                    current-thread)))))
+              (outlining (:thickness 1 :foreground +black+)
+                (restraining () memory))
+              threads-adjuster
+              (outlining (:thickness 1 :foreground +black+)
+                current-thread)))
           primary-adjuster
           (outlining (:thickness 1 :foreground +black+) interactor*)
           documentation)))))
@@ -630,7 +614,7 @@
     (labels 
         ((paint (caption active)
            (let ((fg (if active +black+ +gray30+)))
-             (draw-symbol-box pane caption 0 0 26 26
+             (draw-symbol-box pane caption 0 0 22 22
                               :ink fg :background-ink +transparent-ink+
                               :outline-ink nil)))
          (show-button (caption command)
@@ -653,28 +637,27 @@
           (show-button :trash (if selection `(com-mark-as-spam-and-go-to-next ,selection) nil))))))))
 
       
-(defun display-header (frame pane)
-  (let ((selection (listener-selection frame)))
-    (formatting-table (pane :x-spacing "WW")
-      (formatting-row (pane)
-        (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Date" pane)))
-        (formatting-cell (pane) 
-          (when (messagep selection)
-            (print-local-date-time (message-date selection) pane))))
-      (formatting-row (pane)
-        (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Author" pane)))
-        (formatting-cell (pane) 
-          (when (messagep selection)
-            (format pane "~A" (or (message-author selection) "")))))
-      (formatting-row (pane)
-        (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Subject" pane)))
-        (formatting-cell (pane)
-          (when selection
-            (format pane "~A" 
-                    (let* ((text (or (node-title selection) ""))
-                           (length (length text)))
-                      (if (<= length 70) text
-                          (subseq text 0 70))))))))))
+(defun display-header (selection pane)
+  (formatting-table (pane :x-spacing "WW")
+    (formatting-row (pane)
+      (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Date" pane)))
+      (formatting-cell (pane) 
+        (when (messagep selection)
+          (print-local-date-time (message-date selection) pane))))
+    (formatting-row (pane)
+      (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Author" pane)))
+      (formatting-cell (pane) 
+        (when (messagep selection)
+          (format pane "~A" (or (message-author selection) "")))))
+    (formatting-row (pane)
+      (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Subject" pane)))
+      (formatting-cell (pane)
+        (when selection
+          (format pane "~A" 
+                  (let* ((text (or (node-title selection) ""))
+                         (length (length text)))
+                    (if (<= length 70) text
+                        (subseq text 0 70)))))))))
 
 
 (defun display-thread-list (frame pane)
@@ -699,9 +682,10 @@
 (defun display-primary (frame pane)
   (let* ((selection (listener-selection frame))
          (text (and (messagep selection) (message-text selection))))
-    (window-clear pane)
     (when text
-      (stream-increment-cursor-position pane 0 6)
+      (stream-increment-cursor-position pane 12 6)
+      (with-text-size (pane :small)
+        (display-header selection pane))
       (with-output-as-presentation (pane selection 'message :single-box t)
         (with-text-style (pane +article-text-style+)
           (let ((lines (mapcar (lambda (line) (expand-tabs line 8))
@@ -778,134 +762,3 @@
                                      object))))
         (show root 0))))))
 
-
-
-
-(defclass work-item ()
-  ((key
-     :type t :initarg :key
-     :reader work-item-key)
-   (name
-     :type string :initarg :name
-     :reader work-item-name)
-   (progress
-     :type (real 0 1) :initarg :progress :initform 0
-     :accessor work-item-progress)))
-
-(defclass background-work ()
-  ((items
-     :type list :initform nil :initarg :items
-     :reader background-work-items)))
-
-#-(and)
-(define-listener-command (com-dummy :name "Dummy") ()
-  (with-inline-progress (progress t :sum-label "Total" :partial-view +light-progress-bar-view+) (list :set-up :work :tear-down)
-    (loop
-       for k upfrom 0 to 100 by 10
-       do (progress :set-up (/ k 100))
-          (sleep 0.2))
-    (loop
-       for k upfrom 0 to 100 by 5
-       do (progress :work (/ k 100))
-         (sleep 0.1))
-    (loop
-       for k upfrom 0 to 100 by 25
-       do (progress :tear-down (/ k 100))
-          (sleep 0.1))))
-#-(and)
-(define-listener-command (com-dummy :name "Dummy") ()
-  (formatting-table (t :x-spacing 6 :y-spacing 6)
-    (surrounding-output-with-border (t)
-      (formatting-row ()
-        (formatting-cell ()
-          (write-string "A"))
-        (formatting-cell ()
-          (write-string "B"))
-        (formatting-cell (t :align-x :center)
-          (write-string "C"))))
-    (surrounding-output-with-border (t)
-      (formatting-row ()
-        (formatting-cell ()
-          (write-string "A 123 Hello"))
-        (formatting-cell ()
-          (write-string "B Bubsidupsi"))
-        (formatting-cell ()
-          (write-string "C Brim Brim")))
-      (formatting-row ()
-        (formatting-cell ()
-          (write-string "B Bubsidupsi"))
-        (formatting-cell ()
-          (write-string "A 123 Hello"))
-        (formatting-cell ()
-          (write-string "C Brim Brim")))
-        )))
-
-
-
-
-(defun invoke-rendering-card (function
-                              &key
-                                (stream *standard-output*) (symbol :question)
-                                (symbol-size :huge) (tools nil) (ink +foreground-ink+)
-                                (margin-ink +gray65+) (symbol-ink +black+)
-                                (outline-ink ink) (sensitive-tool-ink ink)
-                                (insensitive-tool-ink +gray50+))
-  (let ((padding 6))
-    (surrounding-output-with-border (stream :shape :card :symbol symbol
-                                            :symbol-size symbol-size :symbol-padding padding
-                                            :padding 0 :outline-ink outline-ink
-                                            :ink ink :symbol-ink symbol-ink
-                                            :margin-ink margin-ink)
-      (formatting-table (stream :x-spacing 0 :y-spacing 0)
-        (formatting-row (stream)
-          (formatting-cell (stream :align-x :left :align-y :top)
-            (surrounding-output-with-border (t :shape :rectangle :padding 6
-                                               :background +transparent-ink+
-                                               :filled t)
-              (funcall function))))
-        (when tools
-          (formatting-row (stream)
-            (formatting-cell (stream :align-x :right :align-y :bottom)
-              (formatting-table (stream :x-spacing 0 :y-spacing 0)
-                (formatting-row (stream)
-                  (dolist (tool tools)
-                    (destructuring-bind (symbol object
-                                         &key (type (presentation-type-of object))
-                                         (sensitive t))
-                        tool
-                      (formatting-cell (stream)
-                        (let ((ink (if sensitive sensitive-tool-ink insensitive-tool-ink)))
-                          (if (not sensitive)
-                              (draw-symbol-box stream symbol 0 0 16 16
-                                               :symbol-size 10 :outline-ink nil
-                                               :background-ink +transparent-ink+
-                                               :ink ink)
-                              (with-output-as-presentation (stream object type :single-box t)
-                                (draw-symbol-box stream symbol 0 0 16 16
-                                                 :symbol-size 10 :outline-ink nil
-                                                 :background-ink +transparent-ink+
-                                                 :ink ink))))))))))))))))
-
-(defmacro rendering-card ((stream &rest options) &body body)
-  (setf stream (if (eq stream 't) '*standard-output* stream))
-  `(invoke-rendering-card (lambda () ,@body)
-                          :stream ,stream ,@options))
-  
-
-
-#-(and)
-(define-listener-command (com-dummy :name "Dummy") ()
-  (fresh-line)
-  (stream-increment-cursor-position *standard-output* 12 6)
-  (with-room-for-graphics (t :first-quadrant nil)
-    (rendering-card (t :symbol :user-secret :symbol-size 72
-                       :tools `((:trash (com-clear-console) :type command)
-                                (:arrow-left (com-dummy) :type command :sensitive nil)
-                                (:arrow-right (com-dummy) :type command)))
-      (with-text-face (t :bold)
-        (format t "~&Hello World~%~%"))
-      (format t "This could be a good place to put advertizing at. Just ~
-                 ~&send us a message, and we send you a quote!~
-                 ~&~%Our hotline can be reached 24/7 from around the~
-                 ~&the country. Give it a try!")
-      nil)))
