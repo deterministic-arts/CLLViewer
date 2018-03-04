@@ -23,10 +23,10 @@
   (:menu-bar nil)
   (:panes
     (toolbox :application
-      :height 27 :min-height 27 :max-height 27
+      :height 27 :min-height 26 :max-height 26
       :name 'toolbox
       :borders nil
-      :background +white+
+      :background +gray80+
       :display-function 'display-toolbox
       :scroll-bars nil
       :display-time :command-loop
@@ -51,7 +51,7 @@
       :display-time :command-loop
       :end-of-line-action :allow
       :end-of-page-action :allow)
-    (memory-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
+    (memory-adjuster (make-pane 'clim-extensions:box-adjuster-gadget))
     (current-thread :application 
       :name 'current-thread
       :borders nil
@@ -61,7 +61,7 @@
       :display-time :command-loop
       :end-of-line-action :allow
       :end-of-page-action :allow)
-    (tree-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
+    (tree-adjuster (make-pane 'clim-extensions:box-adjuster-gadget))
     (primary :application
       :name 'primary
       :borders nil
@@ -71,7 +71,7 @@
       :scroll-bars nil
       :end-of-line-action :allow
       :end-of-page-action :allow)
-    (primary-adjuster (make-pane 'clim-extensions:box-adjuster-gadget :background +gray60+ :border-style :solid :border-width 1))
+    (primary-adjuster (make-pane 'clim-extensions:box-adjuster-gadget))
     (interactor*
       (make-clim-stream-pane 
         :type 'interactor-pane
@@ -81,27 +81,32 @@
     (documentation :pointer-documentation))
   (:layouts 
     (default 
-      (spacing (:thickness 3 :background +white+)
-        (vertically (:y-spacing 3 :background +white+)
-          (horizontally (:x-spacing 3 :background +white+)
-            (vertically (:y-spacing 3 :background +white+)
-              (outlining (:thickness 1 :foreground +black+) 
-                (spacing (:thickness 3 :background +white+) 
+      (spacing (:thickness 3 :background +gray80+)
+        (vertically (:y-spacing 3 :background +gray80+)
+          (horizontally (:x-spacing 3 :background +gray80+)
+            (vertically (:y-spacing 3 :background +gray80+)
+              (climi::lowering ()
+                (spacing (:thickness 1 :background +gray80+)
                   (restraining () dates)))
-              (outlining (:thickness 1 :foreground +black+) 
-                (restraining () all-threads)))
+              (climi::lowering ()
+                (spacing (:thickness 1 :background +gray80+)
+                  (restraining () all-threads))))
             tree-adjuster
-            (vertically (:x-spacing 3 :y-spacing 0 :background +white+)
-              (outlining (:thickness 1 :foreground +black+)
-                (restraining ()
-                  (scrolling (:scroll-bar t)
-                    primary)))
+            (vertically (:x-spacing 3 :y-spacing 3 :background +gray80+)
+              (climi::lowering ()
+                (spacing (:thickness 1 :background +gray80+)
+                  (restraining ()
+                    (scrolling (:scroll-bar t)
+                      primary))))
               toolbox)
             memory-adjuster
-            (outlining (:thickness 1 :foreground +black+)
-              current-thread))
+            (climi::lowering ()
+              (spacing (:thickness 1 :background +gray80+)
+                current-thread)))
           primary-adjuster
-          (outlining (:thickness 1 :foreground +black+) interactor*)
+          (climi::lowering ()
+            (spacing (:thickness 1 :background +gray80+)
+              interactor*))
           documentation)))))
 
 (defmethod listener-selection ((object listener))
@@ -618,7 +623,7 @@
          (successor (and selection (node-successor selection)))
          (predecessor (and selection (node-predecessor selection)))
          (parent (and selection (node-parent selection))))
-    (centering-output (pane :vertically t :horizontally nil :hpad 2)
+    (centering-output (pane :vertically t :horizontally nil)
       (labels 
           ((paint (caption active bgink)
              (let ((fg (if active +black+ +gray30+)))
@@ -650,7 +655,7 @@
                           ((not mark) `(com-add-bookmark ,selection))
                           (t `(com-delete-bookmark ,mark)))))
               (show-button :bookmark cmd
-                           :background-ink (if mark +gray85+ +transparent-ink+)))
+                           :background-ink (if mark +gray95+ +transparent-ink+)))
             (show-button :trash (and selection `(com-mark-as-spam-and-go-to-next ,selection)))))))))
 
       
@@ -728,7 +733,7 @@
                              (setf start mend)))))))
               (terpri pane))))))))
 
-
+#-(and)
 (defun display-current-thread (frame pane)
   (let* ((selection (listener-selection frame))
          (root (and selection (node-thread selection)))
@@ -759,3 +764,32 @@
                                        object))))
           (show root 0))))))
 
+(defun display-current-thread (frame pane)
+  (let* ((selection (listener-selection frame))
+         (root (and selection (node-thread selection)))
+         (memory (listener-memory frame)))
+    (when memory
+      (formatting-item-list (pane :x-spacing "WW")
+        (dolist (item memory)
+          (formatting-cell (pane)
+            (with-output-as-presentation (pane item 'node :single-box t)
+              (format pane "~A by ~A"
+                      (or (node-title item) "(Unknown)")
+                      (or (and (messagep item) (message-author item)) "(Unknown)")))))))
+    (when root
+      (with-text-size (pane :tiny)
+        (format-hierarchy-from-roots (list root)
+                                     (lambda (node)
+                                       (let (children)
+                                         (map-over-child-nodes (lambda (child) (push child children))
+                                                               node)
+                                         (nreverse children)))
+                                     :printer (lambda (object stream)
+                                                (with-output-as-presentation (stream object 'node :single-box t)
+                                                  (with-text-face (stream (if (eql object selection) :bold :roman))
+                                                    (format stream "~@[~A~]~@[ by ~A~]"
+                                                            (node-title object) 
+                                                            (and (messagep object) (message-author object))))))
+                                     :y-spacing 4
+                                     :indentation-step 12
+                                     :stream pane)))))
