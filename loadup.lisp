@@ -21,7 +21,8 @@
 
 (progn
   (load "src/clim-utilities/packages")
-  (load "src/clim-utilities/datetime"))
+  (load "src/clim-utilities/datetime")
+  (load "src/clim-utilities/hierarchy"))
 
 (progn
   (load "src/indexer/package")
