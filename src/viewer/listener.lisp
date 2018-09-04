@@ -486,26 +486,21 @@
                  :name "Pick Date Range") ()
   (let* ((choices (section-date-range-list (listener-selection *application-frame*)))
          (current (node-section-date-range (listener-selection *application-frame*))) 
-         (small (make-text-style nil :roman :small))
          (range (menu-choose choices 
                              :label "Date Range"
-                             :n-columns 4
+                             :n-columns 6
                              :x-spacing "WW" :y-spacing 6
                              :printer (lambda (object stream)
                                         (let* ((date (date-range-start object))
                                                (year (local-year date))
                                                (month (local-month date)))
                                           (with-drawing-options (stream :ink (if (eq object current) +blue+ +black+))
-                                            (with-text-face (stream (if (eql month 1) :bold :roman))
-                                              (format stream "~A~@[ ~D~] (~D)"
-                                                      (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)
-                                                      year
-                                                      (date-range-count object)))
-                                            #-(and)
-                                            (progn
-                                              (terpri stream)
-                                              (with-text-style (stream small)
-                                                (format stream "~D message~:*~P" (date-range-count object))))))))))
+                                            (with-text-size (stream :small)
+                                              (with-text-face (stream (if (eql month 1) :bold :roman))
+                                                (format stream "~A~@[ ~D~] (~D)"
+                                                        (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)
+                                                        year
+                                                        (date-range-count object))))))))))
     (when range
       (let ((selection (car (date-range-threads range))))
         (setf (listener-selection *application-frame*) selection)))))
@@ -797,3 +792,6 @@
                                      :y-spacing 4
                                      :indentation-step 12
                                      :stream pane)))))
+
+
+
