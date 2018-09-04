@@ -322,6 +322,7 @@
                   :command-table global-commands
                   :enabled-if listener-store
                   :name "Update Message Counters") ()
+  (window-clear *standard-output*)
   (let ((frame *application-frame*))
     (preserving-nodes (frame)
       (let ((store (listener-store frame)))
@@ -334,6 +335,7 @@
                   :command-table global-commands
                   :enabled-if listener-store
                   :name "Reparent Node") ((child 'node) (parent 'node))
+  (window-clear *standard-output*)
   (preserving-nodes ()
     (let ((store (node-store child)))
       (reparent-node child parent)
