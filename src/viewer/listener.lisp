@@ -497,13 +497,15 @@
                                                (month (local-month date)))
                                           (with-drawing-options (stream :ink (if (eq object current) +blue+ +black+))
                                             (with-text-face (stream (if (eql month 1) :bold :roman))
-                                              (format stream "~A ~D"
-                                                      (aref '#("" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December") 
-                                                            month)
-                                                      year))
-                                            (terpri stream)
-                                            (with-text-style (stream small)
-                                              (format stream "~D message~:*~P" (date-range-count object)))))))))
+                                              (format stream "~A~@[ ~D~] (~D)"
+                                                      (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)
+                                                      year
+                                                      (date-range-count object)))
+                                            #-(and)
+                                            (progn
+                                              (terpri stream)
+                                              (with-text-style (stream small)
+                                                (format stream "~D message~:*~P" (date-range-count object))))))))))
     (when range
       (let ((selection (car (date-range-threads range))))
         (setf (listener-selection *application-frame*) selection)))))
