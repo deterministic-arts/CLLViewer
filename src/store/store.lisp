@@ -256,6 +256,8 @@
 
 
 (defun open-store (blob-file &optional (database-file (make-pathname :defaults blob-file :type "db")))
+  (unless (probe-file database-file)
+    (error "file ~S does not exist" database-file))
   (let ((connection (open-connection database-file :class 'standard-store)))
     (setf (slot-value connection 'message-file) blob-file)
     connection))
