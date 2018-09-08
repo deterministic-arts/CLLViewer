@@ -774,7 +774,8 @@
             (with-output-as-presentation (pane item 'node :single-box t)
               (format pane "~A by ~A"
                       (or (node-title item) "(Unknown)")
-                      (or (and (messagep item) (message-author item)) "(Unknown)")))))))
+                      (or (and (messagep item) (message-author item)) "(Unknown)"))))))
+      (terpri pane))
     (when root
       (with-text-size (pane :tiny)
         (format-hierarchy-from-roots (list root)
@@ -792,6 +793,4 @@
                                      :y-spacing 4
                                      :indentation-step 12
                                      :stream pane)))))
-
-
 
