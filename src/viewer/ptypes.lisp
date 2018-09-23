@@ -38,6 +38,6 @@
 (define-command (com-browse-url 
                   :name "Browse URL"
                   :command-table global-commands) ((url 'uri :gesture (:select
-                                                                       :tester ((object) (member (uri-scheme object) '(:http :https)))
+                                                                       :tester ((object) (member (uri-scheme object) '(:http :https :ftp)))
                                                                        :documentation "Open")))
   (open-browser (render-uri url nil)))

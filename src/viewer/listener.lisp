@@ -691,14 +691,17 @@
           (formatting-table (pane)
             (loop
                :for object :in threads
-               :for face := (if (member object path) :bold :roman)
+               :for active := (member object path)
+               :for face := (if active :bold :roman)
+               :for ink := (if active +blue+ +black+)
                :do (with-output-as-presentation (pane object 'node :single-box t)
                      (formatting-row (pane)
                        (formatting-cell (pane :align-x :right)
                          (princ (1+ (node-descendant-count object)) pane))
                        (formatting-cell (pane)
                          (with-text-face (pane face)
-                           (princ (or (node-title object) "(Unknown)") pane)))))))))))) 
+                           (with-drawing-options (pane :ink ink)
+                             (princ (or (node-title object) "(Unknown)") pane)))))))))))))
 
 (defun display-primary (frame pane)
   (let* ((selection (listener-selection frame))
@@ -710,13 +713,16 @@
       (with-output-as-presentation (pane selection 'message :single-box t)
         (with-text-style (pane +article-text-style+)
           (let ((lines (mapcar (lambda (line) (expand-tabs line 8))
-                               (split-sequence #\newline text :remove-empty-subseqs nil))))
+                               (split-sequence #\newline
+                                               (string-trim #.(concatenate 'string '(#\newline #\return #\tab #\space)) text)
+                                               :remove-empty-subseqs nil))))
             (dolist (line lines)
+              (terpri pane)
               (stream-increment-cursor-position pane 12 0)
               (with-drawing-options (pane :ink (if (scan "^\\s*([>|:]|<\\s).*" line) +gray40+ +black+))
                 (let ((start 0))
                   (loop
-                     (multiple-value-bind (mstart mend) (scan "\\b(https?://[^/]+(?:/[a-zA-Z0-9!$%&/()=?*+~#_.:;-]*)?)" line :start start)
+                     (multiple-value-bind (mstart mend) (scan "\\b((?:https?|ftp)://[^/]+(?:/[a-zA-Z0-9!$%&/()=?*+~#_.:;-]*)?)" line :start start)
                        (if (not mstart)
                            (progn 
                              (write-string line pane :start start) 
@@ -729,8 +735,9 @@
                                    (with-output-as-presentation (pane uri 'uri :single-box t)
                                      (with-drawing-options (pane :ink +blue+)
                                        (write-string line pane :start mstart :end mend)))))
-                             (setf start mend)))))))
-              (terpri pane))))))))
+                             (setf start mend))))))))
+            (fresh-line pane)
+            (terpri pane)))))))
 
 #-(and)
 (defun display-current-thread (frame pane)
@@ -777,7 +784,7 @@
                       (or (and (messagep item) (message-author item)) "(Unknown)"))))))
       (terpri pane))
     (when root
-      (with-text-size (pane :tiny)
+      (with-text-size (pane :small)
         (format-hierarchy-from-roots (list root)
                                      (lambda (node)
                                        (let (children)
@@ -787,9 +794,21 @@
                                      :printer (lambda (object stream)
                                                 (with-output-as-presentation (stream object 'node :single-box t)
                                                   (with-text-face (stream (if (eql object selection) :bold :roman))
-                                                    (format stream "~@[~A~]~@[ by ~A~]"
-                                                            (node-title object) 
-                                                            (and (messagep object) (message-author object))))))
+                                                    (with-drawing-options (stream :ink (if (eql object selection) +blue+ +black+))
+                                                      (if (not (messagep object))
+                                                          (format stream "~A" (node-title object))
+                                                          (let ((date (message-date object))
+                                                                (author (message-author object))
+                                                                (title (node-title object)))
+                                                            (when date
+                                                              (setf date (format nil "~4,'0D-~2,'0D-~2,'0D"
+                                                                                 (local-year date)
+                                                                                 (local-month date)
+                                                                                 (local-day date))))
+                                                            (format stream "~A~@[ (~A)~]~@[: ~A~]"
+                                                                    date author title)))))))
+                                     :line-style (make-line-style :thickness 1)
+                                     :line-ink +gray85+
                                      :y-spacing 4
                                      :indentation-step 12
                                      :stream pane)))))
