@@ -691,11 +691,11 @@
                     (if (<= length 70) text
                         (subseq text 0 70)))))))))
 
-
 (defun display-thread-list (frame pane)
   (let* ((selection (listener-selection frame))
          (range (and selection (node-section-date-range selection)))
-         (path (and selection (listener-stack frame))))
+         (path (and selection (listener-stack frame)))
+         focus-record)
     (when range
       (let ((threads (date-range-threads range)))
         (when threads
@@ -705,14 +705,19 @@
                :for active := (member object path)
                :for face := (if active :bold :roman)
                :for ink := (if active +blue+ +black+)
-               :do (with-output-as-presentation (pane object 'node :single-box t)
-                     (formatting-row (pane)
-                       (formatting-cell (pane :align-x :right)
-                         (princ (1+ (node-descendant-count object)) pane))
-                       (formatting-cell (pane)
-                         (with-text-face (pane face)
-                           (with-drawing-options (pane :ink ink)
-                             (princ (or (node-title object) "(Unknown)") pane)))))))))))))
+               :for record = (with-output-as-presentation (pane object 'node :single-box t)
+                               (formatting-row (pane)
+                                 (formatting-cell (pane :align-x :right)
+                                   (princ (1+ (node-descendant-count object)) pane))
+                                 (formatting-cell (pane)
+                                   (with-text-face (pane face)
+                                     (with-drawing-options (pane :ink ink)
+                                       (princ (or (node-title object) "(Unknown)") pane))))))
+               :when active :do (setf focus-record record))))))
+    (when (and focus-record (not (region-intersects-region-p focus-record (pane-viewport-region pane))))
+      (multiple-value-bind (x y) (output-record-position focus-record)
+        (declare (ignore x))
+        (scroll-extent pane 0 y)))))
 
 (defun display-primary (frame pane)
   (let* ((selection (listener-selection frame))
