@@ -187,40 +187,45 @@
 (define-command (com-remember-node
                   :command-table global-commands
                   :enabled-if listener-store
-                  :name "Remember Node") ((node 'node :gesture (:menu
-                                                                :tester ((object) (not (member object (listener-memory *application-frame*))))
-                                                                :documentation "Remember")))
+                  :name nil)
+    ((node 'node :gesture (:menu
+                           :tester ((object) (not (member object (listener-memory *application-frame*))))
+                           :documentation "Remember")))
   (push node (listener-memory *application-frame*)))
 
 (define-command (com-forget-node 
                   :command-table global-commands
                   :enabled-if listener-store
-                  :name "Forget Node") ((node 'node :gesture (:menu
-                                                              :tester ((object) (member object (listener-memory *application-frame*)))
-                                                              :documentation "Forget")))
+                  :name nil)
+    ((node 'node :gesture (:menu
+                           :tester ((object) (member object (listener-memory *application-frame*)))
+                           :documentation "Forget")))
   (setf (listener-memory *application-frame*) 
         (remove node (listener-memory *application-frame*))))
 
 (define-command (com-select-date-range 
-                  :name "Select Date Range"
+                  :name nil
                   :enabled-if listener-store
-                  :command-table global-commands) ((range 'date-range :gesture (:select
-                                                                               :documentation "Select")))
+                  :command-table global-commands)
+    ((range 'date-range :gesture (:select
+                                  :documentation "Select")))
   (setf (listener-selection *application-frame*) (car (date-range-threads range))))
 
 (define-command (com-select-node
-                  :name "Select Node"
+                  :name nil
                   :enabled-if listener-store
-                  :command-table global-commands) ((object 'node :gesture (:select 
-                                                                           :documentation "Select")))
+                  :command-table global-commands)
+    ((object 'node :gesture (:select 
+                             :documentation "Select")))
   (setf (listener-selection *application-frame*) object))
 
 (define-command (com-show-headers
-                  :name "Show Headers"
+                  :name nil
                   :command-table global-commands
-                  :enabled-if listener-store) ((object 'node :gesture (:menu
-                                                                       :documentation "Show Headers"
-                                                                       :tester ((object) (messagep object)))))
+                  :enabled-if listener-store)
+    ((object 'node :gesture (:menu
+                             :documentation "Show Headers"
+                             :tester ((object) (messagep object)))))
   (let ((headers (message-headers object)))
     (when headers
       (formatting-table (t :x-spacing "WW")
@@ -259,17 +264,19 @@
 
 (define-command (com-delete-bookmark 
                   :command-table global-commands
-                  :name "Delete Bookmark"
-                  :enabled-if listener-store) ((object 'bookmark :gesture (:delete :documentation "Delete")))
+                  :name nil
+                  :enabled-if listener-store)
+    ((object 'bookmark :gesture (:delete :documentation "Delete")))
   (delete-bookmark object))
 
 
 (define-command (com-add-bookmark 
                   :enabled-if listener-store
                   :command-table global-commands
-                  :name "Add Bookmark") ((object 'node :gesture (:menu :documentation "Add Bookmark"))
-                                         &key (priority 'integer :prompt "priority" :default 0) 
-                                              (description 'string :prompt "description"))
+                  :name nil)
+    ((object 'node :gesture (:menu :documentation "Add Bookmark"))
+     &key (priority 'integer :prompt "priority" :default 0) 
+          (description 'string :prompt "description"))
   (update-bookmark object
                    :description description
                    :priority priority))
@@ -286,7 +293,8 @@
 (define-command (com-interactively-annotate-bookmark 
                   :enabled-if listener-store
                   :command-table global-commands
-                  :name "Interactively Annotate Bookmark") ((object 'bookmark :gesture (:edit :documentation "Annotate")))
+                  :name nil)
+    ((object 'bookmark :gesture (:edit :documentation "Annotate")))
   (let* ((description (string-trim #.(concatenate 'string '(#\space #\tab #\newline #\return)) (accept 'string :prompt "description")))
          (true-description (if (zerop (length description)) nil description)))
     (update-bookmark* (bookmark-node object) (list :description true-description))))
@@ -347,19 +355,21 @@
 (define-command (com-interactively-reparent-node
                   :command-table global-commands
                   :enabled-if listener-store
-                  :name "Interactively Reparent Node") ((child 'node :gesture (:menu :documentation "Reparent")))
+                  :name nil)
+    ((child 'node :gesture (:menu :documentation "Reparent")))
   (com-reparent-node child (accept 'node)))
 
 
 (define-command (com-mark-as-spam 
                   :command-table global-commands
                   :enabled-if listener-store
-                  :name "Mark As Spam") ((object 'node :gesture (:delete 
-                                                                 :tester ((object)
-                                                                           (and (typep object 'thread-root-message)
-                                                                                (not (find-if (lambda (elt) (typep elt 'spam-node))
-                                                                                              (node-path object)))))
-                                                                 :documentation "Mark As Spam")))
+                  :name nil)
+    ((object 'node :gesture (:delete 
+                             :tester ((object)
+                                      (and (typep object 'thread-root-message)
+                                           (not (find-if (lambda (elt) (typep elt 'spam-node))
+                                                         (node-path object)))))
+                             :documentation "Mark As Spam")))
   (preserving-nodes ()
     (let* ((store (listener-store *application-frame*))
            (spam (find-node :spam store)))
@@ -368,7 +378,7 @@
 (define-command (com-mark-as-spam-and-go-to-next
                   :command-table global-commands
                   :enabled-if listener-store
-                  :name "Move To Trash And Skip")
+                  :name nil)
     ((object 'node :gesture (:delete
                              :menu nil
                              :tester ((object)
@@ -386,12 +396,13 @@
 (define-command (com-move-to-threads
                   :command-table global-commands
                   :enabled-if listener-store
-                  :name "Move To Threads") ((object 'node :gesture (:menu 
-                                                                    :tester ((object)
-                                                                             (and (typep object 'thread-root-message)
-                                                                                  (not (find-if (lambda (elt) (typep elt 'threads-node))
-                                                                                                (node-path object)))))
-                                                                    :documentation "Move To Threads")))
+                  :name nil)
+    ((object 'node :gesture (:menu 
+                             :tester ((object)
+                                      (and (typep object 'thread-root-message)
+                                           (not (find-if (lambda (elt) (typep elt 'threads-node))
+                                                         (node-path object)))))
+                             :documentation "Move To Threads")))
   (preserving-nodes ()
     (let* ((store (listener-store *application-frame*))
            (spam (find-node :threads store)))
