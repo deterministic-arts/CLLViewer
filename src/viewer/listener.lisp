@@ -750,41 +750,11 @@
             (fresh-line pane)
             (terpri pane)))))))
 
-#-(and)
 (defun display-current-thread (frame pane)
   (let* ((selection (listener-selection frame))
          (root (and selection (node-thread selection)))
-         (pixels-per-level 8)
-         (memory (listener-memory frame)))
-    (when memory
-      (formatting-item-list (pane :x-spacing "WW")
-        (dolist (item memory)
-          (formatting-cell (pane)
-            (with-output-as-presentation (pane item 'node :single-box t)
-              (format pane "~A by ~A"
-                      (or (node-title item) "(Unknown)")
-                      (or (and (messagep item) (message-author item)) "(Unknown)")))))))
-    (when root
-      (with-text-size (pane :tiny)
-        (labels
-            ((highlightp (object) (eql object selection))
-             (show (object level)
-               (fresh-line pane)
-               (stream-increment-cursor-position pane (* level pixels-per-level) 0)
-               (with-output-as-presentation (pane object 'node :single-box t)
-                 (with-text-face (pane (if (highlightp object) :bold :roman))
-                   (format pane "~@[~A~]~@[ by ~A~]"
-                           (node-title object) 
-                           (and (messagep object) (message-author object)))))
-               (when (plusp (node-child-count object))
-                 (map-over-child-nodes (lambda (child) (show child (1+ level)))
-                                       object))))
-          (show root 0))))))
-
-(defun display-current-thread (frame pane)
-  (let* ((selection (listener-selection frame))
-         (root (and selection (node-thread selection)))
-         (memory (listener-memory frame)))
+         (memory (listener-memory frame))
+         focus-record)
     (when memory
       (formatting-item-list (pane :x-spacing "WW")
         (dolist (item memory)
@@ -794,33 +764,46 @@
                       (or (node-title item) "(Unknown)")
                       (or (and (messagep item) (message-author item)) "(Unknown)"))))))
       (terpri pane))
-    (when root
-      (with-text-size (pane :small)
-        (format-hierarchy-from-roots (list root)
-                                     (lambda (node)
-                                       (let (children)
-                                         (map-over-child-nodes (lambda (child) (push child children))
-                                                               node)
-                                         (nreverse children)))
-                                     :printer (lambda (object stream)
-                                                (with-output-as-presentation (stream object 'node :single-box t)
-                                                  (with-text-face (stream (if (eql object selection) :bold :roman))
-                                                    (with-drawing-options (stream :ink (if (eql object selection) +blue+ +black+))
-                                                      (if (not (messagep object))
-                                                          (format stream "~A" (node-title object))
-                                                          (let ((date (message-date object))
-                                                                (author (message-author object))
-                                                                (title (node-title object)))
-                                                            (when date
-                                                              (setf date (format nil "~4,'0D-~2,'0D-~2,'0D"
-                                                                                 (local-year date)
-                                                                                 (local-month date)
-                                                                                 (local-day date))))
-                                                            (format stream "~A~@[ (~A)~]~@[: ~A~]"
-                                                                    date author title)))))))
-                                     :line-style (make-line-style :thickness 1)
-                                     :line-ink +gray85+
-                                     :y-spacing 4
-                                     :indentation-step 12
-                                     :stream pane)))))
+    (labels
+        ((collect-children (node)
+           (let (children)
+             (map-over-child-nodes (lambda (child) (push child children)) node)
+             (nreverse children)))
+         (paint-node (object stream)
+           (let ((record
+                  (with-output-as-presentation (stream object 'node :single-box t)
+                    (with-text-face (stream (if (eql object selection) :bold :roman))
+                      (with-drawing-options (stream :ink (if (eql object selection) +blue+ +black+))
+                        (if (not (messagep object))
+                            (format stream "~A" (node-title object))
+                            (let ((date (message-date object))
+                                  (author (message-author object))
+                                  (title (node-title object)))
+                              (when date
+                                (setf date (format nil "~4,'0D-~2,'0D-~2,'0D"
+                                                   (local-year date)
+                                                   (local-month date)
+                                                   (local-day date))))
+                              (format stream "~A~@[ (~A)~]~@[: ~A~]"
+                                      date author title))))))))
+             (when (eql object selection)
+               (setf focus-record record)))))
+      (when root
+        (with-text-size (pane :small)
+          (format-hierarchy-from-roots (list root)
+                                       #'collect-children
+                                       :printer #'paint-node
+                                       :line-style (make-line-style :thickness 1)
+                                       :line-ink +gray85+
+                                       :y-spacing 4
+                                       :indentation-step 12
+                                       :stream pane))
+        (when focus-record
+          (let ((vp-region (pane-viewport-region pane)))
+            (unless (region-intersects-region-p vp-region focus-record)
+              (multiple-value-bind (x y) (output-record-position focus-record)
+                (declare (ignore x))
+                (scroll-extent pane 0 y)))))))))
+                      
+              
 
