@@ -717,7 +717,9 @@
     (when (and focus-record (not (region-intersects-region-p focus-record (pane-viewport-region pane))))
       (multiple-value-bind (x y) (output-record-position focus-record)
         (declare (ignore x))
-        (scroll-extent pane 0 y)))))
+        (with-bounding-rectangle* (u1 y1 u2 y2) (pane-viewport-region pane)
+          (declare (ignore u1 u2))
+          (scroll-extent pane 0 (max 0 (- y (/ (- y2 y1) 3)))))))))
 
 (defun display-primary (frame pane)
   (let* ((selection (listener-selection frame))
@@ -806,9 +808,10 @@
         (when focus-record
           (let ((vp-region (pane-viewport-region pane)))
             (unless (region-intersects-region-p vp-region focus-record)
-              (multiple-value-bind (x y) (output-record-position focus-record)
-                (declare (ignore x))
-                (scroll-extent pane 0 y)))))))))
+              (with-bounding-rectangle* (u1 y1 u2 y2) vp-region
+                (declare (ignore u1 u2))
+                (let ((center (/ (- y2 y1) 3)))
+                  (multiple-value-bind (x y) (output-record-position focus-record)
+                    (declare (ignore x))
+                    (scroll-extent pane 0 (max 0 (- y center)))))))))))))
                       
-              
-
