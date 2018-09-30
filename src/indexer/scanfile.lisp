@@ -1,5 +1,5 @@
 
-(in-package "CLL-INDEXER")
+(in-package "CLL-SCANNER")
 
 
 #|
@@ -159,25 +159,3 @@ Some facts about the input file...
   `(map-over-file-message-blobs (lambda (,offset ,blob ,@(when size (list size))) ,@body)
                                   ,filename 
                                   ,@(when size (list :pass-file-size t))))
-
-(defun load-message-blob (key
-                          &key (source-file #P"./cll.txt") 
-                               (index-file (make-pathname :defaults source-file :type "cdb")))
-  (let ((offset (if (typep key '(unsigned-byte 32)) key
-                    (let* ((string (cond
-                                    ((msgidp key) (msgid-string key))
-                                    ((stringp key) key)
-                                    ((symbolp key) (symbol-name key))
-                                    ((characterp key) (string key))
-                                    (t (error 'simple-type-error
-                                              :datum key :expected-type '(or (unsigned-byte 32) msgid)
-                                              :format-control "~S is not a well-formed message designator"
-                                              :format-arguments (list key)))))
-                           (array (zcdb:lookup (babel:string-to-octets string :encoding :utf-8) index-file)))
-                      (and array (loop
-                                   :with value := 0
-                                   :for k :upfrom 0 :below 4
-                                   :do (setf value (logior (ash value 8) (aref array k)))
-                                   :finally (return value)))))))
-    (when offset 
-      (split-message (read-file-message-blob offset source-file)))))
