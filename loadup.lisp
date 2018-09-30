@@ -27,7 +27,9 @@
 (progn
   (load "src/indexer/package")
   (load "src/indexer/msgid")
-  (load "src/indexer/scanfile"))
+  (load "src/indexer/scanfile")
+  (load "src/indexer/makedb")
+  (load "src/indexer/checks"))
 
 (progn
   (load "src/store/package")
