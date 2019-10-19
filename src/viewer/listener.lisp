@@ -170,8 +170,9 @@
                   :enabled-if (lambda (frame) (not (listener-store frame)))
                   :name "Open Store"
                   :command-table listener) ((path '((pathname) :default-type "txt")))
-  (let* ((frame *application-frame*)
-         (store (open-store path)))
+  (let* ((defaults (make-pathname :host nil :device nil :directory nil :name nil :type "txt" :version :newest))
+         (frame *application-frame*)
+         (store (open-store (merge-pathnames path defaults))))
     (setf (listener-store frame) store)))
 
 (define-command (com-close-store 
@@ -571,46 +572,50 @@
 
 
 (defparameter +article-text-style+
-  (make-text-style :fix :roman :large)) 
+  (make-text-style :fix :roman :normal)) 
+
+(defparameter +sidebar-text-style+
+  (make-text-style :sans-serif :roman :small))
 
 (defun display-dates (frame pane)
   (let* ((selection (listener-selection frame))
          (range (node-section-date-range selection))
          (section (node-section selection)))
-    (formatting-table (pane :x-spacing "WW")
-      (formatting-row (pane)
-        (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Store" pane)))
-        (formatting-cell (pane)
-          (when selection
-            (with-output-as-presentation (pane (node-store selection) 'current-store :single-box t)
-              (let ((path1 (darts.lib.sqlite-connection:connection-pathname (node-store selection)))
-                    (path2 (message-file (node-store selection))))
-                (format pane "~A.~A / ~A.~A" 
-                        (pathname-name path1) (pathname-type path1)
-                        (pathname-name path2) (pathname-type path2)))))))
-      (formatting-row (pane)
-        (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Section" pane)))
-        (formatting-cell (pane)
-          (when section 
-            (with-output-as-presentation (pane section 'current-section :single-box t)
-              (typecase section
-                (orphans-node (write-string "Orphans" pane))
-                (threads-node (write-string "Threads" pane))
-                (spam-node (write-string "Spam" pane))
-                (t nil))))))
-      (formatting-row (pane)
-        (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Month" pane)))
-        (formatting-cell (pane)
-          (when range
-            (let ((date (date-range-start range)))
-              (with-output-as-presentation (pane range 'current-date-range :single-box t)
-                (format pane "~A ~D (~D)"
-                        (aref '#("" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December") 
-                              (local-month date))
-                        (local-year date)
-                        (date-range-count range)))))))
-        nil)))
-              
+    (with-text-style (pane +sidebar-text-style+)
+      (centering-output (pane :horizontally nil :hpad 6)
+        (formatting-table (pane :x-spacing "WW")
+          (formatting-row (pane)
+            (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Store" pane)))
+            (formatting-cell (pane)
+              (when selection
+                (with-output-as-presentation (pane (node-store selection) 'current-store :single-box t)
+                  (let ((path1 (darts.lib.sqlite-connection:connection-pathname (node-store selection)))
+                        (path2 (message-file (node-store selection))))
+                    (format pane "~A.~A / ~A.~A" 
+                            (pathname-name path1) (pathname-type path1)
+                            (pathname-name path2) (pathname-type path2)))))))
+          (formatting-row (pane)
+            (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Section" pane)))
+            (formatting-cell (pane)
+              (when section 
+                (with-output-as-presentation (pane section 'current-section :single-box t)
+                  (typecase section
+                    (orphans-node (write-string "Orphans" pane))
+                    (threads-node (write-string "Threads" pane))
+                    (spam-node (write-string "Spam" pane))
+                    (t nil))))))
+          (formatting-row (pane)
+            (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Month" pane)))
+            (formatting-cell (pane)
+              (when range
+                (let ((date (date-range-start range)))
+                  (with-output-as-presentation (pane range 'current-date-range :single-box t)
+                    (format pane "~A ~D (~D)"
+                            (aref '#("" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December") 
+                                  (local-month date))
+                            (local-year date)
+                            (date-range-count range)))))))))
+      nil)))
 
 (defun draw-symbol-box (stream symbol x1 y1 x2 y2
                         &key
@@ -626,7 +631,6 @@
                     :ink ink :text-style style :align-x :left :align-y :top)
         (when outline-ink
           (draw-rectangle* stream x1 y1 x2 y2 :filled nil :ink outline-ink))))))
-
 
 (defun display-toolbox (frame pane)
   (let* ((selection (listener-selection frame))
@@ -668,7 +672,6 @@
                            :background-ink (if mark +gray95+ +transparent-ink+)))
             (show-button :trash (and selection `(com-mark-as-spam-and-go-to-next ,selection)))))))))
 
-      
 (defun display-header (selection pane)
   (formatting-table (pane :x-spacing "WW")
     (formatting-row (pane)
@@ -699,21 +702,22 @@
     (when range
       (let ((threads (date-range-threads range)))
         (when threads
-          (formatting-table (pane)
-            (loop
-               :for object :in threads
-               :for active := (member object path)
-               :for face := (if active :bold :roman)
-               :for ink := (if active +blue+ +black+)
-               :for record = (with-output-as-presentation (pane object 'node :single-box t)
-                               (formatting-row (pane)
-                                 (formatting-cell (pane :align-x :right)
-                                   (princ (1+ (node-descendant-count object)) pane))
-                                 (formatting-cell (pane)
-                                   (with-text-face (pane face)
-                                     (with-drawing-options (pane :ink ink)
-                                       (princ (or (node-title object) "(Unknown)") pane))))))
-               :when active :do (setf focus-record record))))))
+          (with-text-style (pane +sidebar-text-style+)
+            (formatting-table (pane)
+              (loop
+                 :for object :in threads
+                 :for active := (member object path)
+                 :for face := (if active :bold :roman)
+                 :for ink := (if active +blue+ +black+)
+                 :for record = (with-output-as-presentation (pane object 'node :single-box t)
+                                 (formatting-row (pane)
+                                   (formatting-cell (pane :align-x :right)
+                                     (princ (1+ (node-descendant-count object)) pane))
+                                   (formatting-cell (pane)
+                                     (with-text-face (pane face)
+                                       (with-drawing-options (pane :ink ink)
+                                         (princ (or (node-title object) "(Unknown)") pane))))))
+                 :when active :do (setf focus-record record)))))))
     (when (and focus-record (not (region-intersects-region-p focus-record (pane-viewport-region pane))))
       (multiple-value-bind (x y) (output-record-position focus-record)
         (declare (ignore x))
@@ -796,7 +800,7 @@
              (when (eql object selection)
                (setf focus-record record)))))
       (when root
-        (with-text-size (pane :small)
+        (with-text-size (pane :very-small)
           (format-hierarchy-from-roots (list root)
                                        #'collect-children
                                        :printer #'paint-node

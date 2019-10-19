@@ -80,7 +80,7 @@
         (with-text-style (stream +error-description-text-style+)
           (format stream "~A" condition))))
     (formatting-row (stream)
-      (formatting-cell (stream) nil)
+      (formatting-cell (stream) (declare (ignore stream)))
       (formatting-cell (stream)
         (with-text-style (stream +error-description-text-style+)
           (format stream "This is a condition of type ~S"
