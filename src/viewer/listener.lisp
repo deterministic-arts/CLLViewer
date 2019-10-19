@@ -143,8 +143,13 @@
   (window-clear *standard-output*))
 
 (defmethod execute-frame-command :around ((frame listener) command)
-  (declare (ignore command))
-  (with-general-error-handler ()
+  (declare (ignore command frame))
+  (with-debugger () 
+    (call-next-method)))
+
+(defmethod read-frame-command :around ((frame listener) &rest keys)
+  (declare (ignore keys frame))
+  (with-debugger ()
     (call-next-method)))
 
 (defun run-listener (&key (new-process nil) (width 790) (height 550)

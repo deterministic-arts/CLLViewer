@@ -6,7 +6,7 @@
                   #:darts.lib.email-address #:zcdb #:trivial-open-browser #:puri
                   (#:darts.lib.mimetypes #:darts.lib.mime-type)
                   (#:darts.lib.sqlite-utilities #:darts.lib.sqlite-connection)
-                  #:clim-font-awesome)
+                  #:clim-font-awesome #:clim-debugger)
   :do (multiple-value-bind (system package) (if (atom spec) (values spec spec) (values (first spec) (second spec)))
         (unless (find-package package)
           (ql:quickload system))))
