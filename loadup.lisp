@@ -1,10 +1,9 @@
 
 (loop
-  :for spec :in '(#:cl-ppcre #:split-sequence #:local-time #:darts.lib.trivia
-                  #:darts.lib.annotatable #:optima.ppcre #:cl-base64
-                  #:babel #:cl-date-time-parser #:zlib #:flexi-streams
-                  #:darts.lib.email-address #:zcdb #:trivial-open-browser #:puri
-                  (#:darts.lib.mimetypes #:darts.lib.mime-type)
+  :for spec :in '(#:cl-ppcre #:split-sequence #:local-time #:darts.lib.tools
+                  #:optima.ppcre #:cl-base64 #:babel #:cl-date-time-parser #:zlib
+                  #:flexi-streams #:darts.lib.email-address #:zcdb #:trivial-open-browser
+                  #:puri (#:darts.lib.mimetypes #:darts.lib.mime-type)
                   (#:darts.lib.sqlite-utilities #:darts.lib.sqlite-connection)
                   #:clim-font-awesome #:clim-debugger)
   :do (multiple-value-bind (system package) (if (atom spec) (values spec spec) (values (first spec) (second spec)))

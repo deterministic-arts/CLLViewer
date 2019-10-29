@@ -21,10 +21,10 @@
   (:method ((object null)) nil)
   (:method ((object thread-root-message)) object)
   (:method ((object node))
-    (multiple-value-bind (range found) (object-property object 'node-thread)
+    (multiple-value-bind (range found) (property-value object 'node-thread)
       (if found range
           (let ((value (node-thread (node-parent object))))
-            (setf (object-property object 'node-thread) value)
+            (setf (property-value object 'node-thread) value)
             value)))))
 
 (defgeneric node-section (object)
@@ -33,15 +33,15 @@
   (:method ((object orphans-node)) object)
   (:method ((object spam-node)) object)
   (:method ((object node))
-    (multiple-value-bind (answer found) (object-property object 'node-section)
+    (multiple-value-bind (answer found) (property-value object 'node-section)
       (if found answer
           (let ((value (node-section (node-parent object))))
-            (setf (object-property object 'node-section) value)
+            (setf (property-value object 'node-section) value)
             value)))))
 
 (defgeneric node-listener (object)
   (:method ((object node))
-    (values (object-property (node-store object) 'listener))))
+    (values (property-value (node-store object) 'listener))))
 
 (defun node-successor (object)
   (cond*
@@ -65,7 +65,7 @@
 
 
 
-(defclass date-range (annotatable)
+(defclass date-range (property-support)
   ((node
      :type node :initarg :node
      :reader date-range-node)
@@ -104,8 +104,8 @@
 (defun date-range-threads (range)
   (let (result)
     (map-over-child-nodes (lambda (object)
-                            (setf (object-property object 'thread-date-range) range)
-                            (setf (object-property object 'thread-root) object)
+                            (setf (property-value object 'thread-date-range) range)
+                            (setf (property-value object 'thread-root) object)
                             (push object result))
                           (date-range-node range)
                           :from-end t 
@@ -115,11 +115,11 @@
 
 
 (defun section-root-date-range-list (object) 
-  (multiple-value-bind (list found) (object-property object 'date-range-list)
+  (multiple-value-bind (list found) (property-value object 'date-range-list)
     (if found
         list
         (let ((list (collect-date-ranges object)))
-          (setf (object-property object 'date-range-list) list)
+          (setf (property-value object 'date-range-list) list)
           list))))
 
 
@@ -135,7 +135,7 @@
   (:method ((object null)) nil)
   (:method ((object date-range)) object)
   (:method ((object node))
-    (multiple-value-bind (range found) (object-property object 'node-section-date-range)
+    (multiple-value-bind (range found) (property-value object 'node-section-date-range)
       (cond 
         (found range)
         ((not (messagep object)) nil)
@@ -146,7 +146,7 @@
                                      (and (local-date-time<= (date-range-start range) date)
                                           (local-date-time< date (date-range-end range))))
                                    ranges)))
-             (setf (object-property object 'node-section-date-range) answer)
+             (setf (property-value object 'node-section-date-range) answer)
              answer))))))
 
 

@@ -158,7 +158,7 @@
      :initarg :tree-range-end :initform 0
      :reader node-tree-range-end)))
 
-(defclass standard-store (connection annotatable)
+(defclass standard-store (connection property-support)
   ((message-file
      :type pathname :initarg :message-file
      :reader message-file)
@@ -168,10 +168,10 @@
 
 (defclass thread-root (node) ())
 (defclass managed-node (basic-message indexed-node child-node parent-node) ())
-(defclass standard-message (managed-node annotatable) ())
-(defclass thread-root-message (managed-node thread-root annotatable) ())
+(defclass standard-message (managed-node property-support) ())
+(defclass thread-root-message (managed-node thread-root property-support) ())
 
-(defclass strut-node (managed-node annotatable) ())
+(defclass strut-node (managed-node property-support) ())
 (defclass root-node (strut-node) ())
 (defclass orphans-node (strut-node) ())
 (defclass threads-node (strut-node) ())
