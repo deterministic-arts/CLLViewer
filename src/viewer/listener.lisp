@@ -9,6 +9,9 @@
 (defgeneric listener-memory (object))
 (defgeneric (setf listener-memory) (value object))
 
+(defclass semi-list-view-pane (scroll-position-preserving-mixin application-pane)
+  ())
+
 (define-application-frame listener (conditional-command-support standard-application-frame)
   ((store
      :type (or null store) :initform nil
@@ -42,15 +45,16 @@
       :display-time :command-loop
       :end-of-line-action :allow
       :end-of-page-action :allow)
-    (all-threads  :application 
-      :name 'all-threads
-      :borders nil
-      :background +white+
-      :display-function 'display-thread-list
-      :scroll-bars t
-      :display-time :command-loop
-      :end-of-line-action :allow
-      :end-of-page-action :allow)
+    (all-threads
+      (make-pane 'semi-list-view-pane
+                 :name 'all-threads
+                 ;:borders nil
+                 :background +white+
+                 :display-function 'display-thread-list
+                 :scroll-bars t
+                 :display-time :command-loop
+                 :end-of-line-action :allow
+                 :end-of-page-action :allow))
     (memory-adjuster (make-pane 'clim-extensions:box-adjuster-gadget))
     (current-thread :application 
       :name 'current-thread
@@ -90,7 +94,7 @@
                   (restraining () dates)))
               (climi::lowering ()
                 (spacing (:thickness 1 :background +gray80+)
-                  (restraining () all-threads))))
+                  (restraining () (scrolling () all-threads)))))
             tree-adjuster
             (vertically (:x-spacing 3 :y-spacing 3 :background +gray80+)
               (climi::lowering ()
@@ -723,6 +727,7 @@
                                        (with-drawing-options (pane :ink ink)
                                          (princ (or (node-title object) "(Unknown)") pane))))))
                  :when active :do (setf focus-record record)))))))
+    #-(and)
     (when (and focus-record (not (region-intersects-region-p focus-record (pane-viewport-region pane))))
       (multiple-value-bind (x y) (output-record-position focus-record)
         (declare (ignore x))
