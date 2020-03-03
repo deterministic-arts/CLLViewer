@@ -687,7 +687,7 @@
       (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Date" pane)))
       (formatting-cell (pane) 
         (when (messagep selection)
-          (print-local-date-time (message-date selection) pane))))
+          (princ (message-date selection) pane))))
     (formatting-row (pane)
       (formatting-cell (pane) (with-text-face (pane :bold) (write-string "Author" pane)))
       (formatting-cell (pane) 

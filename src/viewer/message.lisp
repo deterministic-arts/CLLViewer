@@ -95,8 +95,8 @@
 (defun collect-date-ranges (node)
   (loop
      :for (year month count) :in (collect-node-date-ranges node)
-     :for start := (make-local-date-time year month 1 0 0 0)
-     :for end := (if (eql month 12) (make-local-date-time (1+ year) 1 1 0 0 0) (make-local-date-time year (1+ month) 1 0 0 0))
+     :for start := (make-local-timestamp :year year :month month :day 1)
+     :for end := (if (eql month 12) (make-local-timestamp :year (1+ year) :month 1 :day 1) (make-local-timestamp :year year :month (1+ month) :day 1))
      :collect (make-instance 'date-range
                              :node node :start start :end end
                              :count count)))
@@ -143,8 +143,8 @@
                   (ranges (section-date-range-list thread))
                   (date (message-date object))
                   (answer (find-if (lambda (range)
-                                     (and (local-date-time<= (date-range-start range) date)
-                                          (local-date-time< date (date-range-end range))))
+                                     (and (local-timestamp<= (date-range-start range) date)
+                                          (local-timestamp< date (date-range-end range))))
                                    ranges)))
              (setf (property-value object 'node-section-date-range) answer)
              answer))))))

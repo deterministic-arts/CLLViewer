@@ -5,7 +5,8 @@
                   #:flexi-streams #:darts.lib.email-address #:zcdb #:trivial-open-browser
                   #:puri (#:darts.lib.mimetypes #:darts.lib.mime-type)
                   (#:darts.lib.sqlite-utilities #:darts.lib.sqlite-connection)
-                  #:clim-font-awesome #:clim-debugger)
+                  #:clim-font-awesome #:clim-debugger #:darts.lib.calendar
+                  #:darts.lib.calendar-local-time) 
   :do (multiple-value-bind (system package) (if (atom spec) (values spec spec) (values (first spec) (second spec)))
         (unless (find-package package)
           (ql:quickload system))))
@@ -14,7 +15,6 @@
 
 (progn
   (load "src/utilities/package")
-  (load "src/utilities/datetime2")
   (load "src/utilities/utilities")
   (load "src/utilities/progress"))
 

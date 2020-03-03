@@ -112,7 +112,7 @@
 
 
 
-(defparameter +default-date+ (make-local-date-time 1970 1 1 0 0 0))
+(defparameter +default-date+ (make-local-timestamp :year 1970 :month 1 :day 1))
 
 (defclass basic-message (message)
   ((identifier
@@ -125,7 +125,7 @@
      :type (or null string) :initarg :author :initform nil
      :reader message-author)
    (date
-     :type local-date-time :initarg :date :initform +default-date+
+     :type local-timestamp :initarg :date :initform +default-date+
      :reader message-date)))
 
 (defclass indexed-node (node)
@@ -293,7 +293,7 @@
     (or object
         (let* ((identifier (make-msgid (statement-column-value stmt 1)))
                (parent (statement-column-value stmt 2))
-               (date (universal-time-to-local-date-time (statement-column-value stmt 3) 0))
+               (date (local-timestamp (universal-time-to-instant (statement-column-value stmt 3))))
                (author (statement-column-value stmt 4))
                (n-children (statement-column-value stmt 5))
                (subject (statement-column-value stmt 6))
@@ -411,8 +411,8 @@
 
 (defun to-universal (value)
   (etypecase value
-    (local-date-time (temporal-to-universal-time value))
-    (local-date (temporal-to-universal-time value))
+    (local-timestamp (instant-to-universal-time (instant value)))
+    (local-date (instant-to-universal-time (instant value)))
     (null nil)
     (integer value)))
 
