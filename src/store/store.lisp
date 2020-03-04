@@ -112,7 +112,7 @@
 
 
 
-(defparameter +default-date+ (make-local-timestamp :year 1970 :month 1 :day 1))
+(defparameter +default-date+ (make-local-timestamp 1970 1 1 0 0 0))
 
 (defclass basic-message (message)
   ((identifier

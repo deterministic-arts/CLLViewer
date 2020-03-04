@@ -95,8 +95,8 @@
 (defun collect-date-ranges (node)
   (loop
      :for (year month count) :in (collect-node-date-ranges node)
-     :for start := (make-local-timestamp :year year :month month :day 1)
-     :for end := (if (eql month 12) (make-local-timestamp :year (1+ year) :month 1 :day 1) (make-local-timestamp :year year :month (1+ month) :day 1))
+     :for start := (make-local-timestamp year month 1 0 0 0)
+     :for end := (if (eql month 12) (make-local-timestamp (1+ year) 1 1 0 0 0) (make-local-timestamp year (1+ month) 1 0 0 0))
      :collect (make-instance 'date-range
                              :node node :start start :end end
                              :count count)))

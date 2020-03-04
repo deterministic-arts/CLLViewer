@@ -41,15 +41,15 @@
   (let ((year (local-year date))
         (month (local-month date)))
     (if (eql month 12)
-        (make-local-date :year (1+ year) :month 1 :day 1)
-        (make-local-date :year year :month (1+ month) :day 1))))
+        (make-local-date (1+ year) 1 1)
+        (make-local-date year (1+ month) 1))))
 
 (defun previous-month (date)
   (let ((year (local-year date))
         (month (local-month date)))
     (if (eql month 1)
-        (make-local-date :year (1- year) :month 12 :day 1)
-        (make-local-date :year year :month (1- month) :day 1))))
+        (make-local-date (1- year) 12 1)
+        (make-local-date year (1- month) 1))))
 
 (defun plus-days (date count)
   (add-time-unit date count :day))
@@ -57,14 +57,14 @@
 (defun current-local-date ()
   (multiple-value-bind (a b c d m y) (decode-universal-time (get-universal-time))
     (declare (ignore a b c))
-    (make-local-date :year y :month m :day d)))
+    (make-local-date y m d)))
 
 (defun display-calendar (year month
                          &key (stream *standard-output*) (printer nil)
                               (inside-ink +black+) (outside-ink +gray60+)
                               (first-weekday :monday) min-rows x-spacing
                               y-spacing)
-  (let* ((month-start-date (make-local-date :year year :month month :day 1))
+  (let* ((month-start-date (make-local-date year month 1))
          (month-end-date (next-month month-start-date))
          (month-start-weekday (local-date-weekday month-start-date))
          (start-weekday-number (position first-weekday +weekday-symbols+))
@@ -108,12 +108,12 @@
                       (princ " " stream))))))))))
 
 (define-presentation-type date-picker-command ())
-(defparameter +min-local-date+ (make-local-date :year 1900 :month 1 :day 1))
-(defparameter +max-local-date+ (make-local-date :year 2038 :month 12 :day 31))
-(defparameter +first-date+ (make-local-date :year 2000 :month 1 :day 1))
+(defparameter +min-local-date+ (make-local-date 1900 1 1))
+(defparameter +max-local-date+ (make-local-date 2038 12 31))
+(defparameter +first-date+ (make-local-date 2000 1 1))
 
 (defun beginning-of-month (object)
-  (make-local-date :day 1 :defaults object))
+  (make-local-date (local-year object) (local-month object) 1))
 
 (defun menu-choose-local-date (&key
                                  initial-value x-position y-position
@@ -201,11 +201,11 @@
                                                             (beginning-of-month (next-month visible-start))))
                                                        ((:prev-year)
                                                         (if (> (local-date-year visible-start) 1900)
-                                                            (make-local-date :year (1- (local-date-year visible-start)) :month (local-date-month visible-start) :day 1)
+                                                            (make-local-date (1- (local-date-year visible-start)) (local-date-month visible-start) 1)
                                                             visible-start))
                                                        ((:next-year)
                                                         (if (< (local-date-year visible-start) 2038) 
-                                                            (make-local-date :year (1+ (local-date-year visible-start)) :month (local-date-month visible-start) :day 1)
+                                                            (make-local-date (1+ (local-date-year visible-start)) (local-date-month visible-start) 1)
                                                             visible-start)))))
                                       (unless (local-date= new-month visible-start)
                                         (setf visible-start new-month)
