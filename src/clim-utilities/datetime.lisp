@@ -6,9 +6,9 @@
 (defparameter +month-names+ #("" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December"))
 (defparameter +month-abbrevs+ #("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"))
 
-(defvar +acceptable-date-formatter+ (compile-timestamp-printer "yyyy-MM-dd"))
-(defvar +acceptable-time-formatter+ (compile-timestamp-printer "HH:mm:ss.S"))
-(defvar +acceptable-timestamp-formatter+ (compile-timestamp-printer "yyyy-MM-dd'T'HH:mm:ss.S"))
+(defvar +acceptable-date-formatter+ (time-format "yyyy-MM-dd"))
+(defvar +acceptable-time-formatter+ (time-format "HH:mm:ss.S"))
+(defvar +acceptable-timestamp-formatter+ (time-format "yyyy-MM-dd'T'HH:mm:ss.S"))
 
 (define-presentation-type local-year-month ())
 (define-presentation-type local-date ())

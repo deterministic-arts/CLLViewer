@@ -1,15 +1,10 @@
 
-(loop
-  :for spec :in '(#:cl-ppcre #:split-sequence #:local-time #:darts.lib.tools
+(cl-user::qload '(#:cl-ppcre #:split-sequence #:local-time #:darts.lib.tools
                   #:optima.ppcre #:cl-base64 #:babel #:cl-date-time-parser #:zlib
                   #:flexi-streams #:darts.lib.email-address #:zcdb #:trivial-open-browser
-                  #:puri (#:darts.lib.mimetypes #:darts.lib.mime-type)
-                  (#:darts.lib.sqlite-utilities #:darts.lib.sqlite-connection)
+                  #:puri #:darts.lib.mimetypes #:darts.lib.sqlite-utilities
                   #:clim-font-awesome #:clim-debugger #:darts.lib.calendar
-                  #:darts.lib.calendar-local-time) 
-  :do (multiple-value-bind (system package) (if (atom spec) (values spec spec) (values (first spec) (second spec)))
-        (unless (find-package package)
-          (ql:quickload system))))
+                  #:darts.lib.calendar-local-time))
 
 (clim-symbol-font:register-symbol-font)
 
