@@ -2,7 +2,7 @@
 (cl-user::qload '(#:cl-ppcre #:split-sequence #:local-time #:darts.lib.tools
                   #:optima.ppcre #:cl-base64 #:babel #:cl-date-time-parser #:zlib
                   #:flexi-streams #:darts.lib.email-address #:zcdb #:trivial-open-browser
-                  #:puri #:darts.lib.mimetypes #:darts.lib.sqlite-utilities
+                  #:puri #:darts.lib.media-types #:darts.lib.sqlite-utilities
                   #:clim-font-awesome #:clim-debugger #:darts.lib.calendar
                   #:darts.lib.calendar-local-time))
 

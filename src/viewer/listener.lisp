@@ -12,6 +12,11 @@
 (defclass semi-list-view-pane (scroll-position-preserving-mixin application-pane)
   ())
 
+(defun make-adjuster ()
+  (make-pane 'clim-extensions:box-adjuster-gadget
+             :foreground +white+ :background +white+
+             :border-style :solid :border-width 0))
+
 (define-application-frame listener (conditional-command-support standard-application-frame)
   ((store
      :type (or null store) :initform nil
@@ -29,7 +34,7 @@
       :height 27 :min-height 26 :max-height 26
       :name 'toolbox
       :borders nil
-      :background +gray80+
+      :background +white+
       :display-function 'display-toolbox
       :scroll-bars nil
       :display-time :command-loop
@@ -51,21 +56,21 @@
                  ;:borders nil
                  :background +white+
                  :display-function 'display-thread-list
-                 :scroll-bars t
+                 ;;:scroll-bars t
                  :display-time :command-loop
                  :end-of-line-action :allow
                  :end-of-page-action :allow))
-    (memory-adjuster (make-pane 'clim-extensions:box-adjuster-gadget))
+    (memory-adjuster (make-adjuster))
     (current-thread :application 
       :name 'current-thread
       :borders nil
       :background +white+
       :display-function 'display-current-thread
-      :scroll-bars t
+      :scroll-bars nil
       :display-time :command-loop
       :end-of-line-action :allow
       :end-of-page-action :allow)
-    (tree-adjuster (make-pane 'clim-extensions:box-adjuster-gadget))
+    (tree-adjuster (make-adjuster))
     (primary :application
       :name 'primary
       :borders nil
@@ -75,7 +80,7 @@
       :scroll-bars nil
       :end-of-line-action :allow
       :end-of-page-action :allow)
-    (primary-adjuster (make-pane 'clim-extensions:box-adjuster-gadget))
+    (primary-adjuster (make-adjuster))
     (interactor*
       (make-clim-stream-pane 
         :type 'interactor-pane
@@ -85,32 +90,28 @@
     (documentation :pointer-documentation))
   (:layouts 
     (default 
-      (spacing (:thickness 3 :background +gray80+)
-        (vertically (:y-spacing 3 :background +gray80+)
-          (horizontally (:x-spacing 3 :background +gray80+)
-            (vertically (:y-spacing 3 :background +gray80+)
-              (climi::lowering ()
-                (spacing (:thickness 1 :background +gray80+)
-                  (restraining () dates)))
-              (climi::lowering ()
-                (spacing (:thickness 1 :background +gray80+)
-                  (restraining () (scrolling () all-threads)))))
+      (spacing (:thickness 6 :background +white+)
+        (vertically (:background +white+)
+          (horizontally (:background +white+)
+            (vertically (:y-spacing 6 :background +white+)
+              (outlining (:thickness 1)
+                (restraining () dates))
+              (outlining (:thickness 1)
+                (restraining () (scrolling () all-threads))))
             tree-adjuster
-            (vertically (:x-spacing 3 :y-spacing 3 :background +gray80+)
-              (climi::lowering ()
-                (spacing (:thickness 1 :background +gray80+)
-                  (restraining ()
-                    (scrolling (:scroll-bar t)
-                      primary))))
+            (vertically (:y-spacing 6 :background +white+)
+              (outlining (:thickness 1)
+                (restraining ()
+                  (scrolling (:scroll-bar t)
+                    primary)))
               toolbox)
             memory-adjuster
-            (climi::lowering ()
-              (spacing (:thickness 1 :background +gray80+)
+            (outlining (:thickness 1)
+              (scrolling (:scroll-bar t)
                 current-thread)))
           primary-adjuster
-          (climi::lowering ()
-            (spacing (:thickness 1 :background +gray80+)
-              interactor*))
+          (outlining (:thickness 1)
+            interactor*)
           documentation)))))
 
 (defmethod listener-selection ((object listener))
