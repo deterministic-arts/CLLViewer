@@ -9,6 +9,7 @@
 
 (defpackage "CLL-INDEXER"
   (:shadowing-import-from "DARTS.LIB.SQLITE-CONNECTION" "WITH-TRANSACTION")
+  (:local-nicknames (#:neta #:darts.lib.network-address))
   (:use "COMMON-LISP" "CL-PPCRE" "SPLIT-SEQUENCE" "OPTIMA" "OPTIMA.PPCRE"
         "SQLITE" "DARTS.LIB.SQLITE-CONNECTION" "DARTS.LIB.EMAIL-ADDRESS" 
         "DARTS.LIB.TOOLS" "DARTS.LIB.MEDIA-TYPES" "CL-DATE-TIME-PARSER" 

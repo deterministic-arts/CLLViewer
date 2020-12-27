@@ -14,13 +14,21 @@
   PRIMARY KEY (id)
 );"
 
+"CREATE TABLE mailbox (
+  id INTEGER NOT NULL,
+  address TEXT NOT NULL,
+  person_id INTEGER NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE (address)
+);"
+
 "CREATE TABLE author (
   id INTEGER NOT NULL,
   address TEXT NOT NULL,
-  person_id INTEGER DEFAULT NULL,
+  mailbox_id INTEGER NOT NULL,
   PRIMARY KEY (id),
   UNIQUE (address),
-  FOREIGN KEY (person_id) REFERENCES person (id)
+  FOREIGN KEY (mailbox_id) REFERENCES mailbox (id)
 );"
 
 "CREATE TABLE message (
@@ -56,6 +64,29 @@
 "CREATE INDEX message_by_parent_and_date ON message (parent_id, date);"
 "CREATE INDEX message_by_tree_start ON message (tree_start, tree_end);"
 ))
+
+
+(defun normalize-host (string &key (start 0) end)
+  (let* ((end (or end (length string)))
+         (length (- end start)))
+    (if (and (plusp length) (eql #\[ (char string start)) (eql #\] (char string (1- end))))
+        (let ((address (or (neta:parse-ipv4-address string :start (1+ start) :end (1- end) :junk-allowed t)
+                           (neta:parse-ipv6-address string :start (1+ start) :end (1- end) :junk-allowed t))))
+          (and address (neta:address-string address :prefix #\[ :suffix #\])))
+        (let ((host (neta:parse-host-name string :start start :end end :junk-allowed t)))
+          (and host (neta:address-string host))))))
+
+(defun normalize-email-address (address)
+  (multiple-value-bind (local-part host display-name) (parse-rfc5322-mailbox address :allow-obsolete-syntax t)
+    (let ((address (and local-part host
+                        (let ((normal-host (normalize-host host)))
+                          (and normal-host
+                               (format nil "~A@~A"
+                                       (escape-local-part local-part)
+                                       normal-host))))))
+      (if address
+          (values address display-name)
+          (values nil nil)))))
 
 (defun create-tables (connection)
   (signal-progress :phase :begin :action :initialize-schema)
@@ -155,9 +186,11 @@
 (defun generate-index-database-1 (connection source-file)
   (let ((max-batch-size 1000)
         (author-table (make-hash-table :test 'equal))
+        (mailbox-table (make-hash-table :test 'equal))
         (msgid-table (make-hash-table :test 'equal))
         (msgid-mapping (make-hash-table :test #'msgid= :hash-function #'msgid-hash))
         (completion 0)
+        (mailbox-counter 0)
         (author-counter 0)
         (batch-entries nil)
         (batch-size 0)
@@ -210,14 +243,34 @@
                  (push (list* offset msgid subject date author refs) batch-entries)
                  (incf batch-size)
                  (when (>= batch-size max-batch-size) (flush-batch)))))
+           (intern-mailbox (string tnx)
+             (when string
+               (multiple-value-bind (mailbox name) (normalize-email-address string)
+                 (multiple-value-bind (mailbox name) (if mailbox (values mailbox name) (values string string))
+                   (let ((present (gethash mailbox mailbox-table)))
+                     (or present
+                         (let ((id (incf mailbox-counter)))
+                           (with-prepared-statement (stmt tnx "INSERT INTO person (id, name) VALUES (?, ?)")
+                             (bind-parameter stmt 1 id)
+                             (bind-parameter stmt 2 (or name mailbox))
+                             (loop while (step-statement stmt)))
+                           (with-prepared-statement (stmt tnx "INSERT INTO mailbox (id, address, person_id) VALUES (?, ?, ?)")
+                             (bind-parameter stmt 1 id)
+                             (bind-parameter stmt 2 mailbox)
+                             (bind-parameter stmt 3 id)
+                             (loop while (step-statement stmt)))
+                           (setf (gethash mailbox mailbox-table) id)
+                           id)))))))
            (intern-author (string tnx)
              (when string
                (let ((present (gethash string author-table)))
                  (or present
-                     (let ((id (incf author-counter)))
-                       (with-prepared-statement (stmt tnx "INSERT INTO author (id, address) VALUES (?, ?)")
+                     (let ((mbox (intern-mailbox string tnx))
+                           (id (incf author-counter)))
+                       (with-prepared-statement (stmt tnx "INSERT INTO author (id, address, mailbox_id) VALUES (?, ?, ?)")
                          (bind-parameter stmt 1 id)
                          (bind-parameter stmt 2 string)
+                         (bind-parameter stmt 3 mbox)
                          (loop while (step-statement stmt))
                          (setf (gethash string author-table) id)
                          id))))))
@@ -304,3 +357,25 @@
   (handler-bind ((progress (lambda (object) (format t "~&~A~%" object))))
     (generate-index-database :source-file source-file :database-file database-file
                              :signal-progress t)))
+
+#-(and)
+(defun normalize-email-addresses (&key (source-file #P"./cll.txt")
+                                    (database-file (make-pathname :defaults source-file :type "db")))
+  (let ((*progressing-operation* `(normalize-email-addresses ,source-file ,database-file))
+        (table (make-hash-table :test 'equal)))
+    (with-connection (connection database-file)
+      (with-transaction (transaction connection :read-only nil)
+        (with-prepared-statement (stmt transaction "SELECT id, address FROM author")
+          (loop
+            while (step-statement stmt)
+            do (let* ((id (statement-column-value stmt 0))
+                      (address (statement-column-value stmt 1)))
+                 (multiple-value-bind (mailbox name) (normalize-email-address address)
+                   (when mailbox
+                     (let ((entry (gethash mailbox table)))
+                       (cond
+                         ((not entry) (setf (gethash mailbox table) (list name id)))
+                         ((or (car entry) (not name)) (push id (cdr entry)))
+                         (t (setf (gethash mailbox table) (list* name id (cdr entry)))))))))))
+        (format t "~&Found ~D unique proper email addresses~%"
+                (hash-table-count table))))))

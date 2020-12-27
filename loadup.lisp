@@ -4,7 +4,7 @@
                   #:flexi-streams #:darts.lib.email-address #:zcdb #:trivial-open-browser
                   #:puri #:darts.lib.media-types #:darts.lib.sqlite-utilities
                   #:clim-font-awesome #:clim-debugger #:darts.lib.calendar
-                  #:darts.lib.calendar-local-time))
+                  #:darts.lib.calendar-local-time #:darts.lib.network-address))
 
 (clim-symbol-font:register-symbol-font)
 
