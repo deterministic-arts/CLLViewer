@@ -110,9 +110,10 @@
               (scrolling (:scroll-bar t)
                 current-thread)))
           primary-adjuster
-          (outlining (:thickness 1)
-            interactor*)
-          documentation)))))
+          (vertically (:y-spacing 6 :background +white+)
+            (outlining (:thickness 1)
+              interactor*)
+            documentation))))))
 
 (defmethod listener-selection ((object listener))
   (car (%listener-stack object)))
@@ -510,19 +511,19 @@
          (current (node-section-date-range (listener-selection *application-frame*))) 
          (range (menu-choose choices 
                              :label "Date Range"
-                             :n-columns 6
-                             :x-spacing "WW" :y-spacing 6
+                             :text-style (make-text-style :sans-serif :roman :very-small)
+                             :n-columns 7
+                             :x-spacing "WW" :y-spacing 4
                              :printer (lambda (object stream)
                                         (let* ((date (date-range-start object))
                                                (year (local-year date))
                                                (month (local-month date)))
                                           (with-drawing-options (stream :ink (if (eq object current) +blue+ +black+))
-                                            (with-text-size (stream :small)
-                                              (with-text-face (stream (if (eql month 1) :bold :roman))
-                                                (format stream "~A~@[ ~D~] (~D)"
-                                                        (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)
-                                                        year
-                                                        (date-range-count object))))))))))
+                                            (with-text-face (stream (if (eql month 1) :bold :roman))
+                                              (format stream "~A~@[ ~D~] (~D)"
+                                                      (aref '#("" "Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec") month)
+                                                      year
+                                                      (date-range-count object)))))))))
     (when range
       (let ((selection (car (date-range-threads range))))
         (setf (listener-selection *application-frame*) selection)))))
@@ -585,7 +586,7 @@
   (make-text-style :fix :roman :normal)) 
 
 (defparameter +sidebar-text-style+
-  (make-text-style :sans-serif :roman :small))
+  (make-text-style :sans-serif :roman :very-small))
 
 (defun display-dates (frame pane)
   (let* ((selection (listener-selection frame))
@@ -741,7 +742,7 @@
          (text (and (messagep selection) (message-text selection))))
     (when text
       (stream-increment-cursor-position pane 12 6)
-      (with-text-size (pane :small)
+      (with-text-size (pane :very-small)
         (display-header selection pane))
       (with-output-as-presentation (pane selection 'message :single-box t)
         (with-text-style (pane +article-text-style+)
