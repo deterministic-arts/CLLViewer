@@ -1,6 +1,10 @@
 
 (in-package #:cll-model-internals)
 
+(defclass store (property-support) ())
+(defclass transaction (property-support) ())
+
+
 (deftype host ()
   '(or neta:host-name neta:ipv4-address neta:ipv6-address))
 
@@ -41,6 +45,8 @@
 
 (defun host-hash (object)
   (neta:address-hash object))
+
+(sb-ext:define-hash-table-test host-equal host-hash)
 
 (defstruct (mailbox (:conc-name nil) (:copier nil) (:predicate mailboxp)
                     (:constructor make-mailbox-1 (mailbox-string mailbox-name mailbox-host
@@ -88,6 +94,8 @@
 
 (defun mailbox-equal (mb1 mb2)
   (eq mb1 mb2))
+
+(sb-ext:define-hash-table-test mailbox-equal mailbox-hash)
 
 (defmethod print-object ((object mailbox) stream)
   (if (not *print-escape*)

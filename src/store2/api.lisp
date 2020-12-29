@@ -1,11 +1,6 @@
 
 (in-package #:cll-model-internals)
 
-(defclass store (property-support) ())
-(defclass transaction (property-support) ())
-
-
-
 (defclass basic-store (db:connection store)
   ((text-file
      :type pathname :initarg :text-file
