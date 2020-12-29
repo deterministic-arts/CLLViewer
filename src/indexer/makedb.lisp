@@ -42,6 +42,8 @@
   n_descendants NOT NULL DEFAULT 0,
   tree_start INTEGER NOT NULL DEFAULT 0,
   tree_end INTEGER NOT NULL DEFAULT 0,
+  period_start INTEGER NOT NULL DEFAULT 0,
+  period_end INTEGER NOT NULL DEFAULT 0,
   subject TEXT,
   PRIMARY KEY (id),
   UNIQUE (msgid),
@@ -135,9 +137,11 @@
          ((setf node-range) (value object) (setf (second object) value))
          (node-start (object) (car (node-range object)))
          (node-end (object) (cdr (node-range object)))
-         (node-children (object) (cddr object))
-         (make-node (id) (list id nil))
-         (add-child (child object) (push child (cddr object)))
+         (node-period (object) (caddr object))
+         ((setf node-period) (value object) (setf (third object) value))
+         (node-children (object) (cdddr object))
+         (make-node (id) (list id nil nil))
+         (add-child (child object) (push child (cdddr object)))
          (intern-node (id) 
            (or (gethash id nodes)
                (let ((node (make-node id)))
@@ -145,29 +149,42 @@
                  node))))
       (signal-progress :action :update-nested-sets :phase :begin :message "Loading messages" :completion 0)
       (with-transaction (transaction connection :read-only nil)
-        (with-prepared-statement (stmt transaction "SELECT id, parent_id FROM message ORDER BY date DESC, id ASC")
+        (with-prepared-statement (stmt transaction "SELECT id, parent_id, date FROM message ORDER BY date DESC, id ASC")
           (loop
             :while (step-statement stmt)
             :do (let* ((node (intern-node (statement-column-value stmt 0)))
                        (pid (statement-column-value stmt 1))
+                       (date (statement-column-value stmt 2))
                        (parent (and pid (intern-node pid))))
+                  (setf (node-period node) (cons date date))
                   (when parent (add-child node parent)))))
-        (with-prepared-statement (stmt transaction "UPDATE message SET tree_start = ?, tree_end = ? WHERE id = ?")
+        (with-prepared-statement (stmt transaction "UPDATE message SET tree_start = ?, tree_end = ?, period_start = ?, period_end = ? WHERE id = ?")
           (labels
-              ((update (id start end)
+              ((update (id start end period)
                  (reset-statement stmt)
                  (bind-parameter stmt 1 start)
                  (bind-parameter stmt 2 end)
-                 (bind-parameter stmt 3 id)
+                 (bind-parameter stmt 3 (car period))
+                 (bind-parameter stmt 4 (cdr period))
+                 (bind-parameter stmt 5 id)
                  (loop while (step-statement stmt))
                  (incf written)
                  (when (zerop (mod written 100))
                    (signal-progress :action :update-nested-sets :phase :update
                                     :completion (/ written counter))))
+               (compute-period (node)
+                 (let ((min (car (node-period node)))
+                       (max (cdr (node-period node))))
+                   (dolist (child (node-children node))
+                     (setf min (min min (car (node-period child))))
+                     (setf max (max max (cdr (node-period child)))))
+                   (setf (node-period node) (cons min max))
+                   node))
                (traverse (node)
                  (let ((start (incf counter)))
                    (mapc #'traverse (node-children node))
                    (let ((end (1+ counter)))
+                     (compute-period node)
                      (setf (node-range node) (cons start end))
                      end))))
             (traverse (gethash #xFFFFFFFF nodes))
@@ -175,7 +192,8 @@
                        (declare (ignore key))
                        (update (node-id value)
                                (node-start value)
-                               (node-end value)))
+                               (node-end value)
+                               (node-period value)))
                      nodes)))
         (signal-progress :action :update-nested-sets :phase :update 
                          :message "Updating descendant counters"
