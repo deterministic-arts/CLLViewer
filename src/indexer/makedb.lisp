@@ -212,7 +212,6 @@
         (author-counter 0)
         (batch-entries nil)
         (batch-size 0)
-        (batch-count 0)
         (unresolved-references nil))
     (let ((root-id (make-msgid "root.cll.txt@deterministic-arts.net" :table msgid-table))
           (orphans-id (make-msgid "orphans.cll.txt@deterministic-arts.net" :table msgid-table))
@@ -316,7 +315,6 @@
         (do-file-message-blobs (offset blob size) source-file
           (enqueue-message offset blob size))
         (flush-batch t)
-        (setf batch-count 0)
         (let ((total-fixups (length unresolved-references))
               (completed-fixups 0))
           (labels

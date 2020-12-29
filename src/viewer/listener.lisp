@@ -708,8 +708,7 @@
 (defun display-thread-list (frame pane)
   (let* ((selection (listener-selection frame))
          (range (and selection (node-section-date-range selection)))
-         (path (and selection (listener-stack frame)))
-         focus-record)
+         (path (and selection (listener-stack frame))))
     (when range
       (let ((threads (date-range-threads range)))
         (when threads
@@ -727,15 +726,8 @@
                                    (formatting-cell (pane)
                                      (with-text-face (pane face)
                                        (with-drawing-options (pane :ink ink)
-                                         (princ (or (node-title object) "(Unknown)") pane))))))
-                 :when active :do (setf focus-record record)))))))
-    #-(and)
-    (when (and focus-record (not (region-intersects-region-p focus-record (pane-viewport-region pane))))
-      (multiple-value-bind (x y) (output-record-position focus-record)
-        (declare (ignore x))
-        (with-bounding-rectangle* (u1 y1 u2 y2) (pane-viewport-region pane)
-          (declare (ignore u1 u2))
-          (scroll-extent pane 0 (max 0 (- y (/ (- y2 y1) 3)))))))))
+                                         (princ (or (node-title object) "(Unknown)")
+                                                pane))))))))))))))
 
 (defun display-primary (frame pane)
   (let* ((selection (listener-selection frame))
