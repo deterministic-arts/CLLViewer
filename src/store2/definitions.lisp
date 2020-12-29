@@ -11,11 +11,10 @@
   (let* ((string (string string))
          (end (or end (length string)))
          (length (- end start)))
-    (cond
-      ((neta:parse-host-name string :junk-allowed t))
-      ((not (and (plusp length) (eql #\[ (char string 0)) (eql #\] (char string (1- length))))) nil)
-      ((neta:parse-ipv4-address string :start 1 :end (1- length) :junk-allowed t))
-      ((neta:parse-ipv6-address string :start 1 :end (1- length) :junk-allowed t)))))
+    (or (neta:parse-host-name string :junk-allowed t)
+        (and (plusp length) (eql #\[ (char string 0)) (eql #\] (char string (1- length)))
+             (or (neta:parse-ipv4-address string :start 1 :end (1- length) :junk-allowed t)
+                 (neta:parse-ipv6-address string :start 1 :end (1- length) :junk-allowed t))))))
 
 (defgeneric host-string (object)
   (:method ((object neta:host-name)) (neta:address-string object))

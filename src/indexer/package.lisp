@@ -1,22 +1,22 @@
 
-(defpackage "CLL-SCANNER"
-  (:use "COMMON-LISP" "CL-PPCRE" "SPLIT-SEQUENCE"
-        "DARTS.LIB.EMAIL-ADDRESS" "DARTS.LIB.MEDIA-TYPES" "CL-DATE-TIME-PARSER" 
-        "FLEXI-STREAMS" "CLL-UTILS")
-  (:export "SPLIT-MESSAGE" "LOAD-MESSAGE-BLOB" "MAP-OVER-FILE-MESSAGE-BLOBS"
-           "DO-FILE-MESSAGE-BLOBS" "READ-FILE-MESSAGE-BLOB"))
+(defpackage #:cll-scanner
+  (:use #:common-lisp #:cl-ppcre #:split-sequence
+        #:darts.lib.email-address #:darts.lib.media-types #:cl-date-time-parser 
+        #:flexi-streams #:cll-utils)
+  (:export #:split-message #:load-message-blob #:map-over-file-message-blobs
+           #:do-file-message-blobs #:read-file-message-blob))
 
 
-(defpackage "CLL-INDEXER"
-  (:shadowing-import-from "DARTS.LIB.SQLITE-CONNECTION" "WITH-TRANSACTION")
+(defpackage #:cll-indexer
+  (:shadowing-import-from #:darts.lib.sqlite-connection #:with-transaction)
   (:local-nicknames (#:neta #:darts.lib.network-address))
-  (:use "COMMON-LISP" "CL-PPCRE" "SPLIT-SEQUENCE" "OPTIMA" "OPTIMA.PPCRE"
-        "SQLITE" "DARTS.LIB.SQLITE-CONNECTION" "DARTS.LIB.EMAIL-ADDRESS" 
-        "DARTS.LIB.TOOLS" "DARTS.LIB.MEDIA-TYPES" "CL-DATE-TIME-PARSER" 
-        "ZLIB" "FLEXI-STREAMS" "CLL-UTILS"
-        "CLL-SCANNER")
+  (:use #:common-lisp #:cl-ppcre #:split-sequence #:optima #:optima.ppcre
+        #:sqlite #:darts.lib.sqlite-connection #:darts.lib.email-address 
+        #:darts.lib.tools #:darts.lib.media-types #:cl-date-time-parser 
+        #:zlib #:flexi-streams #:cll-utils
+        #:cll-scanner)
   (:export 
-    "MSGID" "MSGIDP" 
-    "MAKE-MSGID" "MSGID-HASH" "MSGID=" "MSGID<" "MSGID<=" "MSGID>=" 
-    "MSGID>" "MSGID/=" "MSGID-STRING" "PARSE-MSGID" "PARSE-MSGID-LIST"
-    "PARSE-DATE-TIME" "UPDATE-MESSAGE-COUNTERS"))
+    #:msgid #:msgidp 
+    #:make-msgid #:msgid-hash #:msgid= #:msgid< #:msgid<= #:msgid>= 
+    #:msgid> #:msgid/= #:msgid-string #:parse-msgid #:parse-msgid-list
+    #:parse-date-time #:update-message-counters))
